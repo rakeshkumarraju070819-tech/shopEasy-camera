@@ -10,8 +10,10 @@ client/dist/
 
 # Environment variables
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
+!.env.production
 
 # Logs
 *.log
