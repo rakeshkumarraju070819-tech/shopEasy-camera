@@ -25,7 +25,12 @@ function validateEnv() {
 function createApp() {
   const app = express();
   app.set('trust proxy', Number(process.env.TRUST_PROXY || 0));
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false
+    })
+  );
   const corsOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',');
   app.use(cors({ origin: corsOrigins, credentials: false }));
   app.use(express.json({ limit: '10kb' }));
@@ -52,6 +57,17 @@ function createApp() {
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api/visitors', require('./routes/visitorRoutes'));
   app.use('/api/admin', require('./routes/adminRoutes'));
+
+  // Serve static files from client build in production
+  const clientDist = path.resolve(__dirname, '../client/dist');
+  const fs = require('fs');
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) return next();
+      res.sendFile(path.join(clientDist, 'index.html'));
+    });
+  }
 
   app.use(notFound);
   app.use(errorHandler);
