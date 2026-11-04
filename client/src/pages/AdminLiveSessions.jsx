@@ -760,6 +760,12 @@ export default function AdminLiveSessions() {
                       : 'Unavailable'}
                   </span>
                 </div>
+                <div className="col-span-2 sm:col-span-3 pt-1 border-t border-ops-700/40 flex items-center justify-between text-[11px]">
+                  <span className="text-ops-muted">Location Source:</span>
+                  <span className="text-amber-300/90 font-medium">
+                    IP Geolocation (Approximate network estimate, not physical device GPS)
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -808,23 +814,31 @@ export default function AdminLiveSessions() {
               </h4>
 
               {gpsData?.permission === 'granted' && Number.isFinite(Number(gpsData?.lat)) ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-xl bg-emerald-950/20 border border-emerald-500/30 p-3 text-xs">
-                  <div>
-                    <span className="text-emerald-400/70 block">GPS Latitude</span>
-                    <span className="font-opsmono text-emerald-300 font-semibold">{Number(gpsData.lat).toFixed(5)}°</span>
+                <div className="space-y-2 rounded-xl bg-emerald-950/20 border border-emerald-500/30 p-3 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div>
+                      <span className="text-emerald-400/70 block">GPS Latitude</span>
+                      <span className="font-opsmono text-emerald-300 font-semibold">{Number(gpsData.lat).toFixed(5)}°</span>
+                    </div>
+                    <div>
+                      <span className="text-emerald-400/70 block">GPS Longitude</span>
+                      <span className="font-opsmono text-emerald-300 font-semibold">{Number(gpsData.lng).toFixed(5)}°</span>
+                    </div>
+                    <div>
+                      <span className="text-emerald-400/70 block">Accuracy</span>
+                      <span className="font-opsmono text-emerald-300">±{Math.round(Number(gpsData.accuracy) || 10)}m</span>
+                    </div>
+                    <div>
+                      <span className="text-emerald-400/70 block">Last Updated</span>
+                      <span className="text-emerald-300 text-[11px]">
+                        {gpsData.updatedAt ? new Date(gpsData.updatedAt).toLocaleTimeString() : 'Just now'}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-emerald-400/70 block">GPS Longitude</span>
-                    <span className="font-opsmono text-emerald-300 font-semibold">{Number(gpsData.lng).toFixed(5)}°</span>
-                  </div>
-                  <div>
-                    <span className="text-emerald-400/70 block">Accuracy</span>
-                    <span className="font-opsmono text-emerald-300">±{Math.round(Number(gpsData.accuracy) || 10)}m</span>
-                  </div>
-                  <div>
-                    <span className="text-emerald-400/70 block">Last Updated</span>
-                    <span className="text-emerald-300 text-[11px]">
-                      {gpsData.updatedAt ? new Date(gpsData.updatedAt).toLocaleTimeString() : 'Just now'}
+                  <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-400/70">GPS Sharing Status:</span>
+                    <span className="font-semibold text-emerald-300">
+                      {gpsData?.sharing ? '● Active Live Sharing' : '○ Sharing Paused / Ended'}
                     </span>
                   </div>
                 </div>

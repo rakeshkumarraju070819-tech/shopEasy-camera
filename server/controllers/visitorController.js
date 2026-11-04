@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const store = require('../config/store');
-const { lookupIp } = require('../utils/ipIntel');
+const { lookupIp, extractClientIp } = require('../utils/ipIntel');
 const { parseUserAgent } = require('../utils/userAgent');
 const { hashToken } = require('../middleware/sessionToken');
 
@@ -9,7 +9,9 @@ const STATUSES = ['active', 'ended'];
 
 /** POST /api/visitors/session – called only AFTER the visitor has seen the disclosure and made a choice. */
 exports.createSession = async (req, res) => {
-  const intel = await lookupIp(req.ip);
+  const clientIp = extractClientIp(req);
+  console.log(`[visitorController] createSession incoming IP: detected=${clientIp}, req.ip=${req.ip}`);
+  const intel = await lookupIp(clientIp, req.headers);
   const rawUa = req.headers['user-agent'] || '';
   const ua = parseUserAgent(rawUa);
   const sessionToken = crypto.randomBytes(24).toString('hex');

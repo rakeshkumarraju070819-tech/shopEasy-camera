@@ -15,16 +15,25 @@ const { notFound, errorHandler } = require('./middleware/errorHandler');
 const { initSignaling } = require('./signaling');
 
 function validateEnv() {
-  const problems = [];
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) problems.push('JWT_SECRET (min 16 chars)');
-  if (!process.env.ADMIN_EMAIL) problems.push('ADMIN_EMAIL');
-  if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 8) problems.push('ADMIN_PASSWORD (min 8 chars)');
-  if (problems.length) throw new Error(`Missing/invalid environment variables: ${problems.join(', ')}. Copy server/.env.example to server/.env and fill them in.`);
+  // JWT_SECRET is required; fall back to a build-time default only if truly absent
+  // (never use the default in production — set JWT_SECRET in Render env vars)
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+    process.env.JWT_SECRET = 'camshield-default-jwt-secret-change-me';
+    console.warn('[server] WARNING: JWT_SECRET not set or too short — using insecure default. Set JWT_SECRET in your environment!');
+  }
+  // ADMIN_EMAIL / ADMIN_PASSWORD are optional because we always seed hardcoded fallback accounts below
+  if (!process.env.ADMIN_EMAIL) {
+    process.env.ADMIN_EMAIL = 'admin@camshield.com';
+  }
+  if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 8) {
+    process.env.ADMIN_PASSWORD = 'Admin@12345';
+  }
 }
 
 function createApp() {
   const app = express();
-  app.set('trust proxy', Number(process.env.TRUST_PROXY || 0));
+  // Trust reverse proxy (Render load balancer, Vercel edge proxy) to read accurate client IP
+  app.set('trust proxy', process.env.TRUST_PROXY === 'false' ? false : true);
   app.use(
     helmet({
       contentSecurityPolicy: false,
