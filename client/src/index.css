@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  /* Customer storefront: white, navy, blue */
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ops: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-opsmono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-navy-950: #071428;
+  --color-navy-900: #0b1f3a;
+  --color-navy-700: #1a3560;
+  --color-navy-500: #4a5f82;
+  --color-navy-300: #8d9db8;
+  --color-sky-50: #f3f7ff;
+  --color-sky-100: #e4eeff;
+  --color-sky-200: #cfe0ff;
+  --color-brand-700: #1749ad;
+  --color-brand-600: #1d5fd6;
+  --color-brand-500: #2f74ea;
+  --color-line: #e2e9f5;
+  --color-deal: #f59e0b;
+
+  /* Admin console: dark navy + charcoal, red/blue signal accents */
+  --color-ops-950: #060b16;
+  --color-ops-900: #0a1222;
+  --color-ops-800: #111a2d;
+  --color-ops-700: #182338;
+  --color-ops-600: #222f49;
+  --color-ops-text: #e6ecf8;
+  --color-ops-muted: #8c9cbb;
+  --color-signal-red: #ef4b50;
+  --color-signal-blue: #4b93ff;
+  --color-signal-green: #3dd68c;
+  --color-signal-amber: #f5a524;
+}
+
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: var(--font-sans); color: var(--color-navy-900); background: #fff; -webkit-font-smoothing: antialiased; }
+button, a, input, select { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
+.ops :focus-visible { outline-color: var(--color-signal-blue); }
+
+/* Leaflet needs to sit below modals */
+.leaflet-container { background: #0a1222; font-family: var(--font-ops); }
+.leaflet-pane, .leaflet-top, .leaflet-bottom { z-index: 1 !important; }
+
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(239,75,80,.6); } 100% { box-shadow: 0 0 0 10px rgba(239,75,80,0); } }
+.rec-dot { animation: pulse-ring 1.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } html { scroll-behavior: auto; } }
