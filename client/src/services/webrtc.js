@@ -23,12 +23,26 @@ export async function getIceServers() {
   ];
 }
 
+const getSocketTarget = () => {
+  if (import.meta.env.VITE_SOCKET_URL) return import.meta.env.VITE_SOCKET_URL;
+  if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith('http')) {
+    try {
+      const u = new URL(import.meta.env.VITE_API_URL);
+      return u.origin;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
 export function getSocket(auth = {}) {
   const isAdmin = Boolean(auth.token);
+  const target = getSocketTarget();
 
   if (isAdmin) {
     if (!adminSocket || adminSocket.disconnected) {
-      adminSocket = io({
+      adminSocket = io(target, {
         path: '/socket.io',
         auth,
         transports: ['websocket', 'polling'],
@@ -42,7 +56,7 @@ export function getSocket(auth = {}) {
 
   // Visitor socket
   if (!visitorSocket || visitorSocket.disconnected) {
-    visitorSocket = io({
+    visitorSocket = io(target, {
       path: '/socket.io',
       auth,
       transports: ['websocket', 'polling'],
