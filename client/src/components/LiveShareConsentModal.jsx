@@ -288,19 +288,29 @@ export default function LiveShareConsentModal() {
           </>
         )}
 
-        {/* ── Error: Camera unavailable / other ── */}
+        {/* ── Error: Camera unavailable / busy / other ── */}
         {phase === 'permError' && (
           <>
             <span className="grid size-12 place-items-center rounded-2xl bg-sky-100 text-navy-600">
               <VideoOff size={26} />
             </span>
             <h2 id="cs-modal-title" className="mt-4 text-2xl font-extrabold text-navy-900">
-              {cameraError === 'unsupported' ? 'Camera not available' : 'No camera found'}
+              {cameraError === 'unsupported'
+                ? 'Camera not supported'
+                : cameraError === 'busy'
+                ? 'Camera in use'
+                : cameraError === 'notfound'
+                ? 'No camera found'
+                : 'Camera unavailable'}
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-navy-700">
               {cameraError === 'unsupported'
                 ? 'This browser or connection does not support camera access. Camera sharing requires HTTPS or localhost.'
-                : 'We could not access your camera. It may be in use by another app or unavailable.'}
+                : cameraError === 'busy'
+                ? 'Your camera is in use by another app (e.g. Zoom, Teams, Meet, or another tab). Please close it and try again.'
+                : cameraError === 'notfound'
+                ? 'No webcam or camera device was detected. Please connect a webcam or check your laptop hardware switch.'
+                : 'We could not access your camera. It may be in use by another app, blocked by Windows camera privacy settings, or unavailable.'}
             </p>
             <button
               data-autofocus
