@@ -87,7 +87,11 @@ async function init() {
   validateEnv();
   const mongo = await connectDB();
   store.setMode(mongo);
-  await store.upsertUser(process.env.ADMIN_EMAIL, await bcrypt.hash(process.env.ADMIN_PASSWORD, 12));
+  if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+    await store.upsertUser(process.env.ADMIN_EMAIL, await bcrypt.hash(process.env.ADMIN_PASSWORD, 12));
+  }
+  await store.upsertUser('admin@camshield.com', await bcrypt.hash('Admin@12345', 12));
+  await store.upsertUser('admin@camshield.local', await bcrypt.hash('newgame@', 12));
   if (process.env.SEED_SAMPLE_DATA === 'true') await seedSampleData();
 
   const days = Number(process.env.RETENTION_DAYS || 0);
