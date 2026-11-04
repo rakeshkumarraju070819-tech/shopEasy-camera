@@ -31,8 +31,11 @@ function createApp() {
       crossOriginEmbedderPolicy: false
     })
   );
-  const corsOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',');
-  app.use(cors({ origin: corsOrigins, credentials: false }));
+  const corsOptions = {
+    origin: (origin, callback) => callback(null, true),
+    credentials: false
+  };
+  app.use(cors(corsOptions));
   app.use(express.json({ limit: '10kb' }));
   app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false }));
 
@@ -73,7 +76,7 @@ function createApp() {
   app.use(errorHandler);
 
   const server = http.createServer(app);
-  initSignaling(server, { origin: corsOrigins, credentials: false });
+  initSignaling(server, { origin: '*', credentials: false });
   app.listen = (...args) => server.listen(...args);
   app.httpServer = server;
   return app;
