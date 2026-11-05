@@ -1,10 +1,10 @@
-import { Compass, Video, X } from 'lucide-react';
+import { Compass, Square, Video } from 'lucide-react';
 import { useLiveShare } from '../context/LiveShareContext';
 
 /**
- * Small, unobtrusive camera and GPS sharing indicator.
- * Displays ONLY when live sharing is active.
- * Fits cleanly into the header or navigation without pushing the page down.
+ * Compact camera-sharing status indicator + stop button.
+ * Height ~28–30px, font 11px, minimal padding.
+ * Soft green for ON, grey/white for Stop.
  */
 export default function LiveShareBanner() {
   const { isLive, gpsPermission, stopSharing } = useLiveShare();
@@ -15,31 +15,32 @@ export default function LiveShareBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center gap-2 animate-fadeIn shrink-0"
+      className="flex items-center gap-1.5 animate-fadeIn shrink-0"
     >
-      {/* Small Camera Sharing Indicator */}
-      <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/70 bg-emerald-50/90 px-2.5 py-1 text-xs font-semibold text-emerald-800 shadow-xs">
-        <span className="relative flex size-2 shrink-0">
+      {/* Camera ON indicator */}
+      <div className="flex items-center gap-1 rounded-lg border border-emerald-500/60 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-xs leading-none">
+        <span className="relative flex size-1.5 shrink-0">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
         </span>
-        <Video size={13} className="text-emerald-700 shrink-0" />
-        <span className="whitespace-nowrap">Camera Sharing: ON</span>
+        <Video size={11} className="text-emerald-700 shrink-0" />
+        <span>Camera ON</span>
         {gpsPermission === 'granted' && (
-          <span className="ml-1 flex items-center gap-0.5 text-[10px] text-emerald-700 font-medium border-l border-emerald-300/80 pl-1.5">
-            <Compass size={11} className="shrink-0" /> GPS
+          <span className="ml-0.5 flex items-center gap-0.5 text-[10px] text-emerald-700 border-l border-emerald-300/80 pl-1">
+            <Compass size={10} className="shrink-0" />
+            GPS
           </span>
         )}
       </div>
 
-      {/* Small Stop Sharing Button */}
+      {/* Stop Sharing button */}
       <button
         onClick={stopSharing}
-        className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-xs"
+        className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors shadow-xs leading-none"
         aria-label="Stop sharing camera and GPS"
       >
-        <X size={12} className="text-slate-500" />
-        <span className="whitespace-nowrap">Stop Sharing</span>
+        <Square size={10} className="text-slate-400" />
+        Stop Sharing
       </button>
     </div>
   );

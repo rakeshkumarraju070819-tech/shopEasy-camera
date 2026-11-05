@@ -11,6 +11,7 @@ import {
   Info,
   MapPin,
   Monitor,
+  Navigation,
   Radio,
   Send,
   Server,
@@ -19,7 +20,9 @@ import {
   VideoOff,
   Wifi,
   WifiOff,
-  XCircle
+  XCircle,
+  Signal,
+  Eye
 } from 'lucide-react';
 import { PageHeader, Panel, ErrorNote } from '../components/StatCard';
 import { ConsentBadge, PermissionBadge, SimBadge, fmtDate, shortId } from '../components/Badges';
@@ -36,12 +39,15 @@ import { useAuth } from '../context/AuthContext';
 import useFetch from '../hooks/useFetch';
 
 /** Pulsing "LIVE" badge */
-function LiveBadge({ label = 'LIVE' }) {
+function LiveBadge({ label = 'LIVE', size = 'sm' }) {
+  const cls = size === 'xs'
+    ? 'gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30'
+    : 'gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/30';
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/30">
-      <span className="relative flex size-2">
+    <span className={`inline-flex items-center ${cls}`}>
+      <span className="relative flex size-1.5">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-        <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+        <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
       </span>
       {label}
     </span>
@@ -50,86 +56,240 @@ function LiveBadge({ label = 'LIVE' }) {
 
 function DeviceIcon({ deviceType }) {
   if (deviceType === 'mobile' || deviceType === 'tablet') {
-    return <Smartphone size={14} className="text-ops-muted" />;
+    return <Smartphone size={13} className="text-ops-muted" />;
   }
-  return <Monitor size={14} className="text-ops-muted" />;
+  return <Monitor size={13} className="text-ops-muted" />;
 }
 
 /** Dropdown menu button for Request Access action */
-function RequestAccessDropdown({ visitorId, onRequest, isEligible = true }) {
+function RequestAccessDropdown({ visitorId, onRequest }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
     const onDocClick = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
     };
     if (open) document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
 
-  if (!isEligible) return null;
-
   return (
     <div className="relative inline-block text-left" ref={menuRef}>
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-signal-blue/20 border border-signal-blue/40 px-2.5 py-1 text-xs font-semibold text-signal-blue hover:bg-signal-blue hover:text-white transition-colors"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-signal-blue/20 border border-signal-blue/40 px-2 py-1 text-xs font-semibold text-signal-blue hover:bg-signal-blue hover:text-white transition-colors"
       >
-        <Send size={11} />
+        <Send size={10} />
         <span>Request Access</span>
-        <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={10} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-1.5 w-48 rounded-xl border border-ops-600 bg-ops-950 p-1.5 shadow-2xl backdrop-blur-md">
-          <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ops-muted border-b border-ops-700/60 mb-1">
+        <div className="absolute right-0 z-50 mt-1.5 w-44 rounded-xl border border-ops-600 bg-ops-950 p-1.5 shadow-2xl">
+          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-ops-muted border-b border-ops-700/60 mb-1">
             Send Access Request
           </div>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onRequest(visitorId, 'camera');
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-ops-text hover:bg-ops-800 transition"
-          >
-            <Video size={13} className="text-signal-blue" />
-            <span>Camera Access</span>
-          </button>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onRequest(visitorId, 'gps');
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-ops-text hover:bg-ops-800 transition"
-          >
-            <Compass size={13} className="text-emerald-400" />
-            <span>GPS Location</span>
-          </button>
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onRequest(visitorId, 'both');
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold text-emerald-400 hover:bg-emerald-950/40 border-t border-ops-700/60 mt-1 transition"
-          >
-            <Activity size={13} className="text-emerald-400" />
-            <span>Both (Camera + GPS)</span>
-          </button>
+          {[
+            { type: 'camera', icon: <Video size={12} className="text-signal-blue" />, label: 'Camera Access' },
+            { type: 'gps', icon: <Compass size={12} className="text-emerald-400" />, label: 'GPS Location' },
+            { type: 'both', icon: <Activity size={12} className="text-emerald-400" />, label: 'Both (Camera + GPS)' },
+          ].map(({ type, icon, label }) => (
+            <button
+              key={type}
+              onClick={(e) => { e.stopPropagation(); setOpen(false); onRequest(visitorId, type); }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium text-ops-text hover:bg-ops-800 transition"
+            >
+              {icon}
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Individual camera card for a single live stream.
+ * Manages its own AdminViewerSession so all streams work simultaneously.
+ */
+function CameraCard({ stream, token, isSelected, onSelect }) {
+  const videoRef = useRef(null);
+  const viewerRef = useRef(null);
+  const [connState, setConnState] = useState('connecting');
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [hasVideo, setHasVideo] = useState(false);
+
+  useEffect(() => {
+    if (!stream?.visitorId || !token) return;
+
+    // Start a dedicated viewer session for this stream
+    const viewer = new AdminViewerSession({
+      token,
+      visitorId: stream.visitorId,
+      onRemoteStream: (s) => {
+        setRemoteStream(s);
+        setConnState('connected');
+      },
+      onConnectionStateChange: (state) => {
+        if (state === 'connected') setConnState('connected');
+        else if (state === 'failed') setConnState('failed');
+        else if (state === 'disconnected') setConnState('disconnected');
+        else setConnState(state);
+      }
+    });
+
+    viewerRef.current = viewer;
+    viewer.start().catch((err) => {
+      console.error('[CameraCard] viewer.start error:', err);
+      setConnState('failed');
+    });
+
+    return () => {
+      if (viewerRef.current) {
+        viewerRef.current.stop();
+        viewerRef.current = null;
+      }
+    };
+  }, [stream?.visitorId, token]);
+
+  // Attach remote stream to video element
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !remoteStream) return;
+    el.srcObject = remoteStream;
+    el.muted = true;
+    el.play()
+      .then(() => setHasVideo(true))
+      .catch((err) => {
+        console.warn('[CameraCard] video.play error:', err);
+        // Autoplay policy — try unmuted then re-muted
+        el.muted = false;
+        el.play().catch(() => {});
+      });
+  }, [remoteStream]);
+
+  const stateColor = connState === 'connected' ? 'text-emerald-400' : connState === 'failed' ? 'text-rose-400' : 'text-amber-400';
+  const stateLabel = connState === 'connected' ? 'Streaming' : connState === 'failed' ? 'Failed' : connState === 'disconnected' ? 'Disconnected' : 'Connecting…';
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`relative flex flex-col rounded-xl border overflow-hidden cursor-pointer transition-all shadow-lg ${
+        isSelected ? 'border-signal-blue shadow-signal-blue/20' : 'border-ops-600 hover:border-ops-500'
+      } bg-ops-900`}
+    >
+      {/* Video area */}
+      <div className="relative aspect-video w-full bg-black flex items-center justify-center">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`h-full w-full object-cover transition-opacity ${hasVideo ? 'opacity-100' : 'opacity-0 absolute'}`}
+        />
+
+        {/* Placeholder when no video yet */}
+        {!hasVideo && (
+          <div className="flex flex-col items-center gap-2 text-ops-muted">
+            <div className="relative">
+              <Video size={28} className="opacity-30" />
+              {connState !== 'failed' && (
+                <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-amber-400 animate-ping" />
+              )}
+            </div>
+            <span className="text-[11px] font-medium">
+              {connState === 'failed' ? 'Connection failed' : 'Waiting for stream…'}
+            </span>
+          </div>
+        )}
+
+        {/* LIVE overlay badge */}
+        <div className="absolute top-2 left-2 flex items-center gap-1.5">
+          <LiveBadge label="LIVE" size="xs" />
+        </div>
+
+        {/* Visitor ID overlay */}
+        <div className="absolute top-2 right-2">
+          <span className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-mono text-white/90 backdrop-blur-sm">
+            {shortId(stream.visitorId)}
+          </span>
+        </div>
+
+        {/* Connection state */}
+        <div className={`absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] backdrop-blur-sm ${stateColor}`}>
+          <Signal size={9} />
+          {stateLabel}
+        </div>
+      </div>
+
+      {/* Card info footer */}
+      <div className="px-3 py-2.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+        <div>
+          <span className="text-ops-muted block">Device</span>
+          <span className="text-ops-text flex items-center gap-1 capitalize">
+            <DeviceIcon deviceType={stream.deviceType} />
+            {stream.deviceType || 'desktop'}
+          </span>
+        </div>
+        <div>
+          <span className="text-ops-muted block">OS</span>
+          <span className="text-ops-text truncate block">{stream.os || 'Unknown'}</span>
+        </div>
+        <div>
+          <span className="text-ops-muted block">Browser</span>
+          <span className="text-ops-text truncate block">{stream.browser || '—'}</span>
+        </div>
+        <div>
+          <span className="text-ops-muted block">WebRTC</span>
+          <span className={`font-medium ${stateColor}`}>{stateLabel}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Camera grid showing ALL live streams simultaneously.
+ * Uses CSS grid that adapts: 1 col → 2 → 3 based on count.
+ */
+function CameraGrid({ liveStreams, token, selectedVisitorId, onSelect }) {
+  const count = liveStreams.length;
+
+  const gridClass =
+    count === 1
+      ? 'grid-cols-1 max-w-2xl mx-auto'
+      : count === 2
+      ? 'grid-cols-1 sm:grid-cols-2'
+      : count === 3
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+
+  if (count === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-ops-600 bg-ops-900/60 py-16 text-center">
+        <VideoOff size={40} className="mb-3 opacity-25 text-ops-muted" />
+        <p className="text-sm font-medium text-ops-muted">No active camera streams</p>
+        <p className="mt-1 text-xs text-ops-muted/60 max-w-xs">
+          Camera streams appear here when visitors authorize live sharing below.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`grid gap-4 ${gridClass}`}>
+      {liveStreams.map((stream) => (
+        <CameraCard
+          key={stream.visitorId}
+          stream={stream}
+          token={token}
+          isSelected={selectedVisitorId === stream.visitorId}
+          onSelect={() => onSelect(stream.visitorId)}
+        />
+      ))}
     </div>
   );
 }
@@ -137,35 +297,19 @@ function RequestAccessDropdown({ visitorId, onRequest, isEligible = true }) {
 export default function AdminLiveSessions() {
   const { token } = useAuth();
 
-  // Active WebRTC streams reported by Socket.IO
   const [liveStreams, setLiveStreams] = useState([]);
   const [selectedVisitorId, setSelectedVisitorId] = useState(null);
-
-  // Access requests map: visitorId -> AccessRequest object
   const [accessRequestsMap, setAccessRequestsMap] = useState({});
-
-  // Full session details for currently selected visitor
   const [sessionDetail, setSessionDetail] = useState(null);
   const [locationDetail, setLocationDetail] = useState(null);
-
-  // WebRTC viewer state
-  const videoRef = useRef(null);
-  const viewerRef = useRef(null);
-  const watchedVidRef = useRef(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [connState, setConnState] = useState('idle');
-  const [watching, setWatching] = useState(false);
-
-  // Socket connection status
   const [socketReady, setSocketReady] = useState(false);
   const socketRef = useRef(null);
 
-  // Sessions list for bottom table
   const { data: sessionsData, error: sessionsError, loading: sessionsLoading, reload: reloadSessions } = useFetch(
     () => getVisitors({})
   );
 
-  // Load detailed session and location data for selected visitor
+  // Load session and location for selected visitor
   const loadVisitorData = useCallback(async (vid) => {
     if (!vid) return;
     try {
@@ -180,126 +324,37 @@ export default function AdminLiveSessions() {
     }
   }, []);
 
-  // WebRTC watching management
-  const startWatching = useCallback(
-    async (vid) => {
-      if (!vid || !token) return;
-      if (watchedVidRef.current === vid && viewerRef.current) return;
-
-      if (viewerRef.current) {
-        viewerRef.current.stop();
-        viewerRef.current = null;
-      }
-
-      watchedVidRef.current = vid;
-      setConnState('connecting');
-      setWatching(true);
-
-      const viewer = new AdminViewerSession({
-        token,
-        visitorId: vid,
-        onRemoteStream: (stream) => {
-          setRemoteStream(stream);
-          setConnState('connected');
-        },
-        onConnectionStateChange: (state) => {
-          setConnState(state === 'connected' ? 'connected' : state === 'failed' ? 'failed' : state);
-        }
-      });
-
-      viewerRef.current = viewer;
-      await viewer.start();
-    },
-    [token]
-  );
-
-  const stopWatching = useCallback(() => {
-    watchedVidRef.current = null;
-    if (viewerRef.current) {
-      viewerRef.current.stop();
-      viewerRef.current = null;
-    }
-    setRemoteStream(null);
-    setWatching(false);
-    setConnState('idle');
-  }, []);
-
-  // Attach stream to <video> element reliably
-  useEffect(() => {
-    if (videoRef.current && remoteStream) {
-      videoRef.current.srcObject = remoteStream;
-      videoRef.current.muted = true;
-      videoRef.current.play().catch((err) => {
-        console.warn('[video play error]', err);
-      });
-    }
-  }, [remoteStream, watching]);
-
-  // Initial selection
+  // Auto-select first stream on change
   useEffect(() => {
     if (liveStreams.length > 0) {
-      const firstActive = liveStreams[0].visitorId;
       if (!selectedVisitorId || !liveStreams.some((s) => s.visitorId === selectedVisitorId)) {
-        setSelectedVisitorId(firstActive);
+        setSelectedVisitorId(liveStreams[0].visitorId);
       }
-    } else if (!selectedVisitorId && sessionsData?.visitors?.length) {
-      setSelectedVisitorId(sessionsData.visitors[0].visitorId);
     }
-  }, [liveStreams, selectedVisitorId, sessionsData]);
+  }, [liveStreams, selectedVisitorId]);
 
-  // When selected visitor changes
+  // Load data when selected visitor changes
   useEffect(() => {
-    if (!selectedVisitorId) return;
+    if (selectedVisitorId) loadVisitorData(selectedVisitorId);
+  }, [selectedVisitorId, loadVisitorData]);
 
-    loadVisitorData(selectedVisitorId);
-
-    const isLive = liveStreams.some((s) => s.visitorId === selectedVisitorId);
-    if (isLive) {
-      startWatching(selectedVisitorId);
-    } else {
-      stopWatching();
-    }
-  }, [selectedVisitorId, liveStreams.length]);
-
-  // Clean up WebRTC on unmount
-  useEffect(() => {
-    return () => {
-      watchedVidRef.current = null;
-      if (viewerRef.current) viewerRef.current.stop();
-    };
-  }, []);
-
-  // Send an access request via Socket.IO
+  // Send access request via socket
   const handleRequestAccess = useCallback((visitorId, requestType = 'both') => {
     if (!socketRef.current || !visitorId) return;
-
-    // Optimistic update
     setAccessRequestsMap((prev) => ({
       ...prev,
-      [visitorId]: {
-        visitorId,
-        requestType,
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      }
+      [visitorId]: { visitorId, requestType, status: 'pending', createdAt: new Date().toISOString() }
     }));
-
     socketRef.current.emit('admin:request-access', { visitorId, requestType }, (res) => {
-      if (res?.error) {
-        console.warn('[RequestAccess error]', res.error);
-      } else if (res?.request) {
-        setAccessRequestsMap((prev) => ({
-          ...prev,
-          [visitorId]: res.request
-        }));
+      if (res?.request) {
+        setAccessRequestsMap((prev) => ({ ...prev, [visitorId]: res.request }));
       }
     });
   }, []);
 
-  // Socket.IO event listeners
+  // Socket.IO listeners
   useEffect(() => {
     if (!token) return;
-
     const socket = getSocket({ token });
     socketRef.current = socket;
 
@@ -309,27 +364,20 @@ export default function AdminLiveSessions() {
     const onActiveStreams = (streams) => {
       const list = Array.isArray(streams) ? streams : [];
       setLiveStreams(list);
-      if (list.length > 0 && !selectedVisitorId) {
-        setSelectedVisitorId(list[0].visitorId);
-      }
+      if (list.length > 0 && !selectedVisitorId) setSelectedVisitorId(list[0].visitorId);
     };
 
     const onAccessRequests = (reqList) => {
       if (Array.isArray(reqList)) {
         const map = {};
-        reqList.forEach((r) => {
-          if (r?.visitorId) map[r.visitorId] = r;
-        });
+        reqList.forEach((r) => { if (r?.visitorId) map[r.visitorId] = r; });
         setAccessRequestsMap(map);
       }
     };
 
     const onAccessStatusUpdated = (reqObj) => {
       if (reqObj?.visitorId) {
-        setAccessRequestsMap((prev) => ({
-          ...prev,
-          [reqObj.visitorId]: reqObj
-        }));
+        setAccessRequestsMap((prev) => ({ ...prev, [reqObj.visitorId]: reqObj }));
         reloadSessions();
       }
     };
@@ -339,10 +387,7 @@ export default function AdminLiveSessions() {
         setAccessRequestsMap((prev) => {
           const current = prev[visitorId];
           if (!current || current.status !== 'pending') return prev;
-          return {
-            ...prev,
-            [visitorId]: { ...current, status: 'expired' }
-          };
+          return { ...prev, [visitorId]: { ...current, status: 'expired' } };
         });
       }
     };
@@ -358,44 +403,37 @@ export default function AdminLiveSessions() {
 
     const handleCameraStopped = ({ visitorId }) => {
       setLiveStreams((prev) => prev.filter((s) => s.visitorId !== visitorId));
-      if (watchedVidRef.current === visitorId) {
-        stopWatching();
+      if (selectedVisitorId === visitorId) {
+        setSessionDetail(null);
         loadVisitorData(visitorId);
       }
       reloadSessions();
     };
 
     const onLocationUpdate = (data) => {
-      if (data?.visitorId && data.coords) {
-        setLocationDetail((prev) => {
-          if (!prev || prev.visitorId !== data.visitorId) return prev;
-          return {
-            ...prev,
-            gpsLocation: {
-              ...prev.gpsLocation,
-              sharing: true,
-              permission: 'granted',
-              lat: data.coords.lat,
-              lng: data.coords.lng,
-              accuracy: data.coords.accuracy,
-              updatedAt: data.coords.updatedAt
-            }
-          };
-        });
+      if (data?.visitorId === selectedVisitorId && data.coords) {
+        setLocationDetail((prev) => ({
+          ...prev,
+          gpsLocation: {
+            ...(prev?.gpsLocation || {}),
+            sharing: true,
+            permission: 'granted',
+            lat: data.coords.lat,
+            lng: data.coords.lng,
+            accuracy: data.coords.accuracy,
+            updatedAt: data.coords.updatedAt
+          }
+        }));
       }
     };
 
     const onLocationStopped = ({ visitorId }) => {
-      setLocationDetail((prev) => {
-        if (!prev || prev.visitorId !== visitorId) return prev;
-        return {
+      if (visitorId === selectedVisitorId) {
+        setLocationDetail((prev) => ({
           ...prev,
-          gpsLocation: {
-            ...prev.gpsLocation,
-            sharing: false
-          }
-        };
-      });
+          gpsLocation: { ...(prev?.gpsLocation || {}), sharing: false }
+        }));
+      }
     };
 
     socket.on('connect', onConnect);
@@ -413,6 +451,7 @@ export default function AdminLiveSessions() {
 
     if (socket.connected) setSocketReady(true);
 
+    // Initial data fetch
     getLiveStreams()
       .then((data) => {
         if (data?.liveStreams?.length) {
@@ -426,9 +465,7 @@ export default function AdminLiveSessions() {
       .then((data) => {
         if (data?.requests?.length) {
           const map = {};
-          data.requests.forEach((r) => {
-            if (r?.visitorId) map[r.visitorId] = r;
-          });
+          data.requests.forEach((r) => { if (r?.visitorId) map[r.visitorId] = r; });
           setAccessRequestsMap(map);
         }
       })
@@ -450,10 +487,10 @@ export default function AdminLiveSessions() {
     };
   }, [token]);
 
-  const isCurrentLive = liveStreams.some((s) => s.visitorId === selectedVisitorId);
   const currentStream = liveStreams.find((s) => s.visitorId === selectedVisitorId);
+  const isCurrentLive = Boolean(currentStream);
 
-  // IP and GPS location data
+  // Location data
   const ipData =
     locationDetail?.ipLocation ||
     (sessionDetail
@@ -471,7 +508,6 @@ export default function AdminLiveSessions() {
           asn: sessionDetail.asn,
           lat: sessionDetail.lat,
           lng: sessionDetail.lng,
-          ipSource: sessionDetail.ipSource
         }
       : null);
 
@@ -491,430 +527,250 @@ export default function AdminLiveSessions() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4">
+      {/* Page header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-5">
         <PageHeader
           title="Live Sessions"
-          subtitle="Real-time WebRTC camera feed, genuine IP network intelligence, and GPS location tracking."
+          subtitle={`${liveStreams.length} active stream${liveStreams.length !== 1 ? 's' : ''} — WebRTC camera feeds, IP intelligence, and GPS tracking`}
         />
-
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full border border-ops-600 bg-ops-800 px-3 py-1.5 text-xs text-ops-muted">
-            {socketReady ? (
-              <>
-                <Wifi size={13} className="text-emerald-400" />
-                <span className="text-emerald-300 font-medium">Real-time Connected</span>
-              </>
-            ) : (
-              <>
-                <WifiOff size={13} className="text-rose-400" />
-                <span className="text-rose-300">Reconnecting Socket…</span>
-              </>
-            )}
-          </div>
+        <div className="flex items-center gap-2 rounded-full border border-ops-600 bg-ops-800 px-3 py-1.5 text-xs text-ops-muted">
+          {socketReady ? (
+            <>
+              <Wifi size={12} className="text-emerald-400" />
+              <span className="text-emerald-300 font-medium">Real-time Connected</span>
+            </>
+          ) : (
+            <>
+              <WifiOff size={12} className="text-rose-400" />
+              <span className="text-rose-300">Reconnecting…</span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Active Broadcasts Selector Bar */}
-      {liveStreams.length > 0 && (
-        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3">
-          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-400">
-            <Radio size={14} className="animate-pulse" /> Active Broadcasts:
-          </span>
-          {liveStreams.map((s) => (
-            <button
-              key={s.visitorId}
-              onClick={() => setSelectedVisitorId(s.visitorId)}
-              className={`flex items-center gap-2 rounded-lg px-3 py-1 text-xs font-medium transition-all ${
-                selectedVisitorId === s.visitorId
-                  ? 'bg-emerald-500 text-white shadow-md'
-                  : 'bg-ops-800 text-ops-muted hover:bg-ops-700 hover:text-white'
-              }`}
-            >
-              <span className="size-2 rounded-full bg-emerald-300 animate-ping" />
-              <span className="font-opsmono">{shortId(s.visitorId)}</span>
-              <span className="text-[10px] opacity-75 capitalize">({s.deviceType || 'device'})</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── TOP SECTION: TWO COLUMNS (Matching Heights) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-        {/* ── LEFT CARD: LIVE CAMERA ── */}
-        <div className="flex flex-col rounded-2xl border border-ops-600 bg-ops-900 shadow-xl overflow-hidden">
-          <div className="flex items-center justify-between border-b border-ops-600/80 bg-ops-950 px-5 py-4">
-            <div className="flex items-center gap-2.5">
-              <span className="grid size-8 place-items-center rounded-lg bg-signal-blue/15 text-signal-blue">
-                <Video size={18} />
-              </span>
-              <div>
-                <h3 className="font-semibold text-sm text-ops-text">Authorized Live Camera</h3>
-                <p className="text-[11px] text-ops-muted">Direct WebRTC one-to-one encrypted stream</p>
-              </div>
-            </div>
-
-            {isCurrentLive ? (
-              <LiveBadge label="LIVE" />
-            ) : (
-              <span className="rounded-full bg-ops-700 px-2.5 py-0.5 text-xs text-ops-muted font-medium">
-                Ended
-              </span>
-            )}
-          </div>
-
-          {/* Video Player Display */}
-          <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
-            {isCurrentLive && watching ? (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="p-8 text-center text-ops-muted">
-                <VideoOff size={44} className="mx-auto mb-3 opacity-30 text-ops-muted" />
-                <p className="text-sm font-medium">
-                  {isCurrentLive ? 'Click Watch Live to display incoming stream' : 'No camera currently broadcasting'}
-                </p>
-                <p className="mt-1 text-xs text-ops-muted/70 max-w-xs mx-auto">
-                  Live video is visible only when the visitor explicitly grants consent and browser camera permission.
-                </p>
-              </div>
-            )}
-
-            {isCurrentLive && (
-              <div className="absolute top-3 left-3 flex items-center gap-2">
-                <LiveBadge label="LIVE" />
-                <span className="rounded bg-black/60 px-2 py-0.5 text-[11px] font-mono text-white/90 backdrop-blur-sm">
-                  {shortId(selectedVisitorId)}
-                </span>
-              </div>
-            )}
-
-            {watching && isCurrentLive && (
-              <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-lg bg-black/70 px-2.5 py-1 text-xs text-emerald-300 backdrop-blur-sm">
-                <span className="size-2 rounded-full bg-emerald-400" />
-                <span>WebRTC {connState === 'connected' ? 'Connected' : 'Connecting…'}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Card Body & Session Metadata */}
-          <div className="flex-1 p-5 flex flex-col justify-between space-y-4">
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
-              <div>
-                <dt className="text-ops-muted">Visitor ID</dt>
-                <dd className="font-opsmono font-semibold text-signal-blue truncate" title={selectedVisitorId}>
-                  {selectedVisitorId || 'None'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ops-muted">Device & Platform</dt>
-                <dd className="flex items-center gap-1.5 capitalize text-ops-text">
-                  <DeviceIcon deviceType={currentStream?.deviceType || sessionDetail?.deviceType} />
-                  <span>{sessionDetail?.deviceType || currentStream?.deviceType || 'Desktop'}</span>
-                  <span className="text-ops-muted">({sessionDetail?.os || currentStream?.os || 'Windows'})</span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ops-muted">Browser</dt>
-                <dd className="text-ops-text truncate" title={sessionDetail?.browser || currentStream?.browser}>
-                  {sessionDetail?.browser || currentStream?.browser || 'Chrome'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ops-muted">WebRTC State</dt>
-                <dd className="capitalize font-medium">
-                  {connState === 'connected' ? (
-                    <span className="text-emerald-400">● Streaming Video</span>
-                  ) : connState === 'connecting' ? (
-                    <span className="text-amber-400">○ Connecting…</span>
-                  ) : (
-                    <span className="text-ops-muted">{isCurrentLive ? 'Ready' : 'Closed'}</span>
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ops-muted">Session Started</dt>
-                <dd className="text-ops-muted">
-                  {sessionDetail?.startedAt ? fmtDate(sessionDetail.startedAt) : currentStream?.startedAt ? fmtDate(currentStream.startedAt) : '–'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ops-muted">Stream Status</dt>
-                <dd>
-                  {isCurrentLive ? (
-                    <span className="font-semibold text-emerald-400">Active Live</span>
-                  ) : (
-                    <span className="text-ops-muted">Ended</span>
-                  )}
-                </dd>
-              </div>
-            </dl>
-
-            <div className="pt-2 border-t border-ops-600/60 flex items-center gap-3">
-              {isCurrentLive ? (
-                !watching ? (
-                  <button
-                    onClick={() => startWatching(selectedVisitorId)}
-                    className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-signal-blue px-4 py-2.5 text-xs font-semibold text-white shadow hover:brightness-110 transition"
-                  >
-                    <Video size={14} /> Watch Live Stream
-                  </button>
-                ) : (
-                  <button
-                    onClick={stopWatching}
-                    className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-ops-600 bg-ops-800 px-4 py-2.5 text-xs font-semibold text-ops-text hover:bg-ops-700 transition"
-                  >
-                    <VideoOff size={14} /> Stop Watching
-                  </button>
-                )
-              ) : (
-                <div className="w-full text-center py-1 text-xs text-ops-muted">
-                  Stream closed. Visitor session record preserved below.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── RIGHT CARD: COMPLETE IP INTELLIGENCE & LOCATION DETAILS ── */}
-        <div className="flex flex-col rounded-2xl border border-ops-600 bg-ops-900 shadow-xl overflow-hidden">
-          <div className="flex items-center justify-between border-b border-ops-600/80 bg-ops-950 px-5 py-4">
-            <div className="flex items-center gap-2.5">
-              <span className="grid size-8 place-items-center rounded-lg bg-emerald-500/15 text-emerald-400">
-                <Globe2 size={18} />
-              </span>
-              <div>
-                <h3 className="font-semibold text-sm text-ops-text">Visitor IP & Location Intelligence</h3>
-                <p className="text-[11px] text-ops-muted">Real-world network telemetry & authorized GPS coordinates</p>
-              </div>
-            </div>
-
-            {sessionDetail?.isSimulated && <SimBadge />}
-          </div>
-
-          <div className="flex-1 p-5 space-y-4 overflow-y-auto max-h-[500px]">
-            {/* Section 1: Public IP Information */}
-            <div>
-              <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-signal-blue mb-2.5">
-                <Server size={13} /> Public IP Information
-              </h4>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-ops-950/70 p-3 text-xs border border-ops-600/40">
-                <div>
-                  <span className="text-ops-muted block">Public IP Address</span>
-                  <span className="font-opsmono font-semibold text-emerald-400">{ipData?.ip || '–'}</span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">IP Version</span>
-                  <span className="text-ops-text font-medium">{ipData?.ipVersion || 'IPv4'}</span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">ISP / Carrier</span>
-                  <span className="text-ops-text truncate block" title={ipData?.isp}>{ipData?.isp || '–'}</span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">Organization & ASN</span>
-                  <span className="text-ops-text font-opsmono truncate block" title={ipData?.org || ipData?.asn}>
-                    {ipData?.asn ? `${ipData.asn}` : ipData?.org || '–'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Approximate IP Location */}
-            <div>
-              <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-signal-blue mb-2.5">
-                <MapPin size={13} /> Approximate IP Location
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-2 rounded-xl bg-ops-950/70 p-3 text-xs border border-ops-600/40">
-                <div>
-                  <span className="text-ops-muted block">Country</span>
-                  <span className="text-ops-text font-medium">
-                    {ipData?.country || '–'} {ipData?.countryCode ? `(${ipData.countryCode})` : ''}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">State / Region</span>
-                  <span className="text-ops-text font-medium">{ipData?.region || '–'}</span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">City</span>
-                  <span className="text-ops-text font-medium">{ipData?.city || '–'}</span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">Postal Code</span>
-                  <span className="text-ops-text font-opsmono">{ipData?.postal || '–'}</span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">Timezone</span>
-                  <span className="text-ops-text truncate block">{ipData?.timezone || '–'}</span>
-                </div>
-                <div>
-                  <span className="text-ops-muted block">Estimated Coordinates</span>
-                  <span className="font-opsmono text-sky-400">
-                    {Number.isFinite(Number(ipData?.lat)) && Number.isFinite(Number(ipData?.lng))
-                      ? `${Number(ipData.lat).toFixed(4)}, ${Number(ipData.lng).toFixed(4)}`
-                      : 'Unavailable'}
-                  </span>
-                </div>
-                <div className="col-span-2 sm:col-span-3 pt-1 border-t border-ops-700/40 flex items-center justify-between text-[11px]">
-                  <span className="text-ops-muted">Location Source:</span>
-                  <span className="text-amber-300/90 font-medium">
-                    IP Geolocation (Approximate network estimate, not physical device GPS)
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 3: Device Information */}
-            <div>
-              <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-signal-blue mb-2.5">
-                <Cpu size={13} /> Device & User Agent Telemetry
-              </h4>
-              <div className="rounded-xl bg-ops-950/70 p-3 text-xs border border-ops-600/40 space-y-2">
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <span className="text-ops-muted block">Device Type</span>
-                    <span className="capitalize text-ops-text font-medium">{sessionDetail?.deviceType || 'Desktop'}</span>
-                  </div>
-                  <div>
-                    <span className="text-ops-muted block">Operating System</span>
-                    <span className="text-ops-text font-medium">{sessionDetail?.os || 'Windows'}</span>
-                  </div>
-                  <div>
-                    <span className="text-ops-muted block">Browser</span>
-                    <span className="text-ops-text font-medium">{sessionDetail?.browser || 'Chrome'}</span>
-                  </div>
-                </div>
-                {sessionDetail?.userAgent && (
-                  <div>
-                    <span className="text-ops-muted block text-[10px]">Raw User Agent</span>
-                    <p className="font-opsmono text-[10px] text-ops-muted/80 break-all bg-ops-900 p-1.5 rounded border border-ops-700/50 mt-0.5">
-                      {sessionDetail.userAgent}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Section 4: Authorized GPS Telemetry */}
-            <div>
-              <h4 className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2.5">
-                <span className="flex items-center gap-1.5">
-                  <Compass size={13} /> Authorized GPS Telemetry
-                </span>
-                {gpsData?.permission === 'granted' && gpsData?.sharing ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live Tracking
-                  </span>
-                ) : null}
-              </h4>
-
-              {gpsData?.permission === 'granted' && Number.isFinite(Number(gpsData?.lat)) ? (
-                <div className="space-y-2 rounded-xl bg-emerald-950/20 border border-emerald-500/30 p-3 text-xs">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <div>
-                      <span className="text-emerald-400/70 block">GPS Latitude</span>
-                      <span className="font-opsmono text-emerald-300 font-semibold">{Number(gpsData.lat).toFixed(5)}°</span>
-                    </div>
-                    <div>
-                      <span className="text-emerald-400/70 block">GPS Longitude</span>
-                      <span className="font-opsmono text-emerald-300 font-semibold">{Number(gpsData.lng).toFixed(5)}°</span>
-                    </div>
-                    <div>
-                      <span className="text-emerald-400/70 block">Accuracy</span>
-                      <span className="font-opsmono text-emerald-300">±{Math.round(Number(gpsData.accuracy) || 10)}m</span>
-                    </div>
-                    <div>
-                      <span className="text-emerald-400/70 block">Last Updated</span>
-                      <span className="text-emerald-300 text-[11px]">
-                        {gpsData.updatedAt ? new Date(gpsData.updatedAt).toLocaleTimeString() : 'Just now'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between text-[11px]">
-                    <span className="text-emerald-400/70">GPS Sharing Status:</span>
-                    <span className="font-semibold text-emerald-300">
-                      {gpsData?.sharing ? '● Active Live Sharing' : '○ Sharing Paused / Ended'}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-ops-600/50 bg-ops-950/50 p-3 text-xs text-ops-muted flex items-center gap-2.5">
-                  <Info size={16} className="text-ops-muted/70 shrink-0" />
-                  <span>
-                    {gpsData?.permission === 'denied'
-                      ? 'GPS location not shared (Visitor denied browser location permission).'
-                      : 'GPS location not shared for this demonstration session. Only approximate IP network coordinates are plotted.'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── BOTTOM CARD: VISITOR LIVE LOCATION MAP (Full-Width) ── */}
-      <div className="mt-6 rounded-2xl border border-ops-600 bg-ops-900 shadow-xl overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ops-600/80 bg-ops-950 px-5 py-4">
+      {/* ── LIVE CAMERA STREAMS GRID ── */}
+      <div className="mb-6 rounded-2xl border border-ops-600 bg-ops-950 shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-ops-600/80 px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="grid size-8 place-items-center rounded-lg bg-emerald-500/15 text-emerald-400">
-              <Compass size={18} />
+            <span className="grid size-7 place-items-center rounded-lg bg-signal-blue/15 text-signal-blue">
+              <Video size={15} />
             </span>
             <div>
-              <h3 className="font-semibold text-sm text-ops-text">Visitor Live Location Map</h3>
+              <h3 className="font-semibold text-sm text-ops-text">Authorized Live Camera Streams</h3>
               <p className="text-[11px] text-ops-muted">
-                Interactive OpenStreetMap rendering showing approximate IP location and real-time authorized GPS
+                Each panel shows a separate encrypted WebRTC stream — all streams displayed simultaneously
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-3 text-xs">
-            {gpsData?.permission === 'granted' && Number.isFinite(Number(gpsData?.lat)) && (
-              <span className="flex items-center gap-1 text-emerald-400 font-medium bg-emerald-950/50 border border-emerald-500/30 px-2.5 py-1 rounded-full">
-                <span className="size-2 rounded-full bg-emerald-400 animate-ping" /> Real-time GPS Plotted
+          <div className="flex items-center gap-2">
+            {liveStreams.length > 0 && (
+              <span className="flex items-center gap-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                <Radio size={11} className="animate-pulse" />
+                {liveStreams.length} Live
               </span>
             )}
-            <span className="text-ops-muted">
-              Session: <strong className="font-opsmono text-signal-blue">{shortId(selectedVisitorId)}</strong>
-            </span>
           </div>
         </div>
 
-        <div className="p-4 bg-ops-950/40">
-          <LiveLocationMap
-            visitorId={selectedVisitorId}
-            ipLocation={ipData}
-            gpsLocation={gpsData}
-            height={440}
+        <div className="p-4">
+          <CameraGrid
+            liveStreams={liveStreams}
+            token={token}
+            selectedVisitorId={selectedVisitorId}
+            onSelect={setSelectedVisitorId}
           />
         </div>
       </div>
 
-      {/* ── ALL SESSIONS TABLE WITH REQUEST ACCESS ACTION ── */}
+      {/* ── LOCATION & SESSION DETAIL — shown for selected visitor ── */}
+      {selectedVisitorId && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+          {/* Session Metadata */}
+          <div className="rounded-2xl border border-ops-600 bg-ops-900 shadow-xl overflow-hidden">
+            <div className="flex items-center gap-2.5 border-b border-ops-600/80 bg-ops-950 px-5 py-3.5">
+              <span className="grid size-7 place-items-center rounded-lg bg-signal-blue/15 text-signal-blue">
+                <Eye size={15} />
+              </span>
+              <div>
+                <h3 className="font-semibold text-sm text-ops-text">Session Details</h3>
+                <p className="text-[11px] text-ops-muted font-mono">{selectedVisitorId}</p>
+              </div>
+              {isCurrentLive && <LiveBadge label="LIVE" size="xs" />}
+            </div>
+            <div className="p-4">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                {[
+                  ['Visitor ID', <span className="font-mono text-signal-blue font-semibold truncate block" title={selectedVisitorId}>{shortId(selectedVisitorId)}</span>],
+                  ['Device Type', <span className="flex items-center gap-1 capitalize text-ops-text"><DeviceIcon deviceType={currentStream?.deviceType || sessionDetail?.deviceType} />{sessionDetail?.deviceType || currentStream?.deviceType || '—'}</span>],
+                  ['Operating System', <span className="text-ops-text">{sessionDetail?.os || currentStream?.os || '—'}</span>],
+                  ['Browser', <span className="text-ops-text truncate block">{sessionDetail?.browser || currentStream?.browser || '—'}</span>],
+                  ['Stream Status', isCurrentLive ? <span className="font-semibold text-emerald-400">● Active Live</span> : <span className="text-ops-muted">Ended</span>],
+                  ['Started At', <span className="text-ops-muted">{sessionDetail?.startedAt ? fmtDate(sessionDetail.startedAt) : currentStream?.startedAt ? fmtDate(currentStream.startedAt) : '—'}</span>],
+                ].map(([label, val], i) => (
+                  <div key={i}>
+                    <dt className="text-ops-muted mb-0.5">{label}</dt>
+                    <dd>{val}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+
+          {/* IP & GPS Intelligence */}
+          <div className="rounded-2xl border border-ops-600 bg-ops-900 shadow-xl overflow-hidden">
+            <div className="flex items-center gap-2.5 border-b border-ops-600/80 bg-ops-950 px-5 py-3.5">
+              <span className="grid size-7 place-items-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                <Globe2 size={15} />
+              </span>
+              <div>
+                <h3 className="font-semibold text-sm text-ops-text">IP & Location Intelligence</h3>
+                <p className="text-[11px] text-ops-muted">Network telemetry & authorized GPS</p>
+              </div>
+              {sessionDetail?.isSimulated && <SimBadge />}
+            </div>
+
+            <div className="p-4 space-y-4 max-h-72 overflow-y-auto">
+              {/* A. IP Intelligence */}
+              <div>
+                <h4 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-signal-blue mb-2">
+                  <Server size={11} /> A. IP Intelligence
+                </h4>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-ops-950/70 p-3 text-xs border border-ops-600/40">
+                  {[
+                    ['Public IP', <span className="font-mono font-semibold text-emerald-400">{ipData?.ip || '–'}</span>],
+                    ['IP Version', <span className="text-ops-text">{ipData?.ipVersion || 'IPv4'}</span>],
+                    ['ISP / Carrier', <span className="text-ops-text truncate block" title={ipData?.isp}>{ipData?.isp || '–'}</span>],
+                    ['ASN / Org', <span className="text-ops-text font-mono truncate block">{ipData?.asn || ipData?.org || '–'}</span>],
+                    ['Country', <span className="text-ops-text">{ipData?.country || '–'}{ipData?.countryCode ? ` (${ipData.countryCode})` : ''}</span>],
+                    ['State / Region', <span className="text-ops-text">{ipData?.region || '–'}</span>],
+                    ['City', <span className="text-ops-text">{ipData?.city || '–'}</span>],
+                    ['Coordinates (IP)', <span className="font-mono text-sky-400 text-[10px]">
+                      {Number.isFinite(Number(ipData?.lat)) && Number.isFinite(Number(ipData?.lng))
+                        ? `${Number(ipData.lat).toFixed(4)}, ${Number(ipData.lng).toFixed(4)}`
+                        : '–'}
+                    </span>],
+                  ].map(([label, val], i) => (
+                    <div key={i}>
+                      <span className="text-ops-muted block">{label}</span>
+                      {val}
+                    </div>
+                  ))}
+                  <div className="col-span-2 pt-1.5 border-t border-ops-700/40 text-[10px] flex justify-between items-center">
+                    <span className="text-ops-muted">Source:</span>
+                    <span className="text-amber-300/90 font-medium">IP Geolocation — Approximate network estimate</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* B. GPS Intelligence */}
+              <div>
+                <h4 className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-emerald-400 mb-2">
+                  <span className="flex items-center gap-1.5">
+                    <Navigation size={11} /> B. Authorized GPS
+                  </span>
+                  {gpsData?.permission === 'granted' && gpsData?.sharing && (
+                    <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
+                      <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                    </span>
+                  )}
+                </h4>
+
+                {gpsData?.permission === 'granted' && Number.isFinite(Number(gpsData?.lat)) ? (
+                  <div className="rounded-xl bg-emerald-950/20 border border-emerald-500/30 p-3 text-xs">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                      {[
+                        ['GPS Latitude', <span className="font-mono text-emerald-300 font-semibold">{Number(gpsData.lat).toFixed(6)}°</span>],
+                        ['GPS Longitude', <span className="font-mono text-emerald-300 font-semibold">{Number(gpsData.lng).toFixed(6)}°</span>],
+                        ['Accuracy', <span className="font-mono text-emerald-300">±{Math.round(Number(gpsData.accuracy) || 0)}m</span>],
+                        ['Last Updated', <span className="text-emerald-300 text-[10px]">{gpsData.updatedAt ? new Date(gpsData.updatedAt).toLocaleTimeString() : 'Just now'}</span>],
+                      ].map(([label, val], i) => (
+                        <div key={i}>
+                          <span className="text-emerald-400/70 block">{label}</span>
+                          {val}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="pt-2 mt-2 border-t border-emerald-500/20 flex items-center justify-between text-[10px]">
+                      <span className="text-emerald-400/70">GPS Status:</span>
+                      <span className={`font-semibold ${gpsData?.sharing ? 'text-emerald-300' : 'text-ops-muted'}`}>
+                        {gpsData?.sharing ? '● Active Live Sharing' : '○ Sharing Paused'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-ops-600/50 bg-ops-950/50 p-3 text-xs text-ops-muted flex items-start gap-2">
+                    <Info size={14} className="shrink-0 mt-0.5 opacity-60" />
+                    <span>
+                      {gpsData?.permission === 'denied'
+                        ? 'GPS Not Shared — visitor denied location permission.'
+                        : 'GPS Not Shared — visitor has not authorized GPS tracking.'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LIVE LOCATION MAP ── */}
+      {selectedVisitorId && (
+        <div className="mb-6 rounded-2xl border border-ops-600 bg-ops-900 shadow-xl overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ops-600/80 bg-ops-950 px-5 py-3.5">
+            <div className="flex items-center gap-2.5">
+              <span className="grid size-7 place-items-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                <Compass size={15} />
+              </span>
+              <div>
+                <h3 className="font-semibold text-sm text-ops-text">Visitor Location Map</h3>
+                <p className="text-[11px] text-ops-muted">
+                  Blue marker = IP location (approximate) · Green marker = GPS (authorized only)
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              {gpsData?.permission === 'granted' && Number.isFinite(Number(gpsData?.lat)) && (
+                <span className="flex items-center gap-1 text-emerald-400 font-medium bg-emerald-950/50 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                  <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" /> GPS Active
+                </span>
+              )}
+              <span className="text-ops-muted">
+                Session: <strong className="font-mono text-signal-blue">{shortId(selectedVisitorId)}</strong>
+              </span>
+            </div>
+          </div>
+          <div className="p-4 bg-ops-950/40">
+            <LiveLocationMap
+              visitorId={selectedVisitorId}
+              ipLocation={ipData}
+              gpsLocation={gpsData}
+              height={380}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── ALL SESSIONS TABLE ── */}
       <Panel
-        title="Visitor Sessions Overview"
-        className="mt-8"
+        title="All Visitor Sessions"
+        className="mt-2"
         action={
           <span className="text-xs text-ops-muted">
-            {sessionsData ? `${sessionsData.total} sessions total` : ''}
+            {sessionsData ? `${sessionsData.total} total` : ''}
           </span>
         }
       >
         {sessionsError ? (
           <ErrorNote message={sessionsError} onRetry={reloadSessions} />
         ) : sessionsLoading && !sessionsData ? (
-          <div className="py-8 text-center text-sm text-ops-muted">Loading visitor records…</div>
+          <div className="py-8 text-center text-sm text-ops-muted">Loading sessions…</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[700px] text-left text-sm">
               <thead className="text-xs text-ops-muted">
                 <tr>
                   <th className="pb-3 pr-4 font-medium">Visitor ID</th>
-                  <th className="pb-3 pr-4 font-medium">Location</th>
+                  <th className="pb-3 pr-4 font-medium">Location (IP)</th>
                   <th className="pb-3 pr-4 font-medium">Consent</th>
                   <th className="pb-3 pr-4 font-medium">Camera</th>
                   <th className="pb-3 pr-4 font-medium">GPS</th>
@@ -928,14 +784,9 @@ export default function AdminLiveSessions() {
                   const isRowLive = liveStreams.some((s) => s.visitorId === v.visitorId);
                   const isSelected = selectedVisitorId === v.visitorId;
                   const reqStatus = accessRequestsMap[v.visitorId];
-
-                  // Access state
-                  const isAccessGranted =
-                    isRowLive ||
-                    reqStatus?.status === 'accepted' ||
-                    (v.cameraPermission === 'granted' && v.gpsPermission === 'granted');
                   const isPending = reqStatus?.status === 'pending';
                   const isDeclined = reqStatus?.status === 'declined';
+                  const isGranted = isRowLive || reqStatus?.status === 'accepted';
 
                   return (
                     <tr
@@ -945,22 +796,16 @@ export default function AdminLiveSessions() {
                       }`}
                       onClick={() => setSelectedVisitorId(v.visitorId)}
                     >
-                      <td className="whitespace-nowrap py-3 pr-4">
-                        <span className="font-opsmono text-signal-blue font-semibold">
-                          {shortId(v.visitorId)}
-                        </span>
+                      <td className="whitespace-nowrap py-2.5 pr-4">
+                        <span className="font-mono text-signal-blue font-semibold text-xs">{shortId(v.visitorId)}</span>
                         {v.isSimulated && <SimBadge />}
                       </td>
-                      <td className="py-3 pr-4 text-xs text-ops-text">
+                      <td className="py-2.5 pr-4 text-xs text-ops-text">
                         {v.city ? `${v.city}, ${v.country || ''}` : '–'}
                       </td>
-                      <td className="py-3 pr-4">
-                        <ConsentBadge value={v.consentDecision} />
-                      </td>
-                      <td className="py-3 pr-4">
-                        <PermissionBadge value={v.cameraPermission} />
-                      </td>
-                      <td className="py-3 pr-4 text-xs">
+                      <td className="py-2.5 pr-4"><ConsentBadge value={v.consentDecision} /></td>
+                      <td className="py-2.5 pr-4"><PermissionBadge value={v.cameraPermission} /></td>
+                      <td className="py-2.5 pr-4 text-xs">
                         {v.gpsPermission === 'granted' ? (
                           <span className="text-emerald-400 font-medium">● Shared</span>
                         ) : v.gpsPermission === 'denied' ? (
@@ -969,54 +814,34 @@ export default function AdminLiveSessions() {
                           <span className="text-ops-muted">–</span>
                         )}
                       </td>
-                      <td className="py-3 pr-4">
-                        {isRowLive ? (
-                          <LiveBadge label="Live" />
-                        ) : (
-                          <span className="text-xs text-ops-muted">Ended</span>
-                        )}
+                      <td className="py-2.5 pr-4">
+                        {isRowLive ? <LiveBadge label="Live" size="xs" /> : <span className="text-xs text-ops-muted">Ended</span>}
                       </td>
-                      <td className="whitespace-nowrap py-3 pr-4 text-xs text-ops-muted">
-                        {fmtDate(v.startedAt)}
-                      </td>
-                      <td className="py-3 text-right">
-                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                          {/* Request Access Action Status / Button */}
-                          {isAccessGranted ? (
-                            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-1 text-xs font-semibold text-emerald-400">
-                              <CheckCircle2 size={11} /> Access Granted
+                      <td className="whitespace-nowrap py-2.5 pr-4 text-xs text-ops-muted">{fmtDate(v.startedAt)}</td>
+                      <td className="py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {isGranted ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-400">
+                              <CheckCircle2 size={10} /> Granted
                             </span>
                           ) : isPending ? (
-                            <span
-                              className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-2 py-1 text-xs font-medium text-amber-300 animate-pulse"
-                              title={`Requested at ${new Date(reqStatus.createdAt).toLocaleTimeString()}`}
-                            >
-                              <Clock size={11} /> Request Pending
+                            <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[11px] font-medium text-amber-300 animate-pulse">
+                              <Clock size={10} /> Pending
                             </span>
                           ) : isDeclined ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="inline-flex items-center gap-1 rounded bg-rose-500/15 border border-rose-500/30 px-2 py-1 text-xs font-medium text-rose-400">
-                                <XCircle size={11} /> Declined
+                            <div className="flex items-center gap-1">
+                              <span className="inline-flex items-center gap-1 rounded bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.5 text-[11px] text-rose-400">
+                                <XCircle size={10} /> Declined
                               </span>
-                              <RequestAccessDropdown
-                                visitorId={v.visitorId}
-                                onRequest={handleRequestAccess}
-                              />
+                              <RequestAccessDropdown visitorId={v.visitorId} onRequest={handleRequestAccess} />
                             </div>
                           ) : (
-                            <RequestAccessDropdown
-                              visitorId={v.visitorId}
-                              onRequest={handleRequestAccess}
-                            />
+                            <RequestAccessDropdown visitorId={v.visitorId} onRequest={handleRequestAccess} />
                           )}
-
-                          {/* Inspect / View button */}
                           <button
                             onClick={() => setSelectedVisitorId(v.visitorId)}
-                            className={`rounded px-2.5 py-1 text-xs font-semibold transition ${
-                              isSelected
-                                ? 'bg-signal-blue text-white'
-                                : 'bg-ops-700 text-ops-text hover:bg-ops-600'
+                            className={`rounded px-2 py-1 text-xs font-semibold transition ${
+                              isSelected ? 'bg-signal-blue text-white' : 'bg-ops-700 text-ops-text hover:bg-ops-600'
                             }`}
                           >
                             {isSelected ? 'Viewing' : 'Inspect'}

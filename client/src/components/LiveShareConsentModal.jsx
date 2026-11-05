@@ -1,16 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { Camera, Compass, Loader2, MapPin, ShieldCheck, VideoOff, X } from 'lucide-react';
+import { Camera, Compass, Loader2, ShieldCheck, VideoOff, X, MapPin, CheckCircle2 } from 'lucide-react';
 import { useLiveShare } from '../context/LiveShareContext';
 
 /**
- * Multi-step customer consent modal for live camera + optional GPS demonstration.
- * Flow:
- *  1. Camera consent (idle)
- *  2. Camera browser prompt (requesting)
- *  3. GPS location consent (gps_prompt)
- *  4. GPS browser prompt (requesting_gps)
- *  5. Final confirmation (confirming)
- *  6. Starting broadcast (starting)
+ * Compact, modern multi-step consent modal.
+ * White card, light-blue accents, minimal layout.
+ * No large illustrations. Each permission independently optional.
  */
 export default function LiveShareConsentModal() {
   const {
@@ -27,33 +22,21 @@ export default function LiveShareConsentModal() {
   const panelRef = useRef(null);
 
   const visible = [
-    'idle',
-    'requesting',
-    'gps_prompt',
-    'requesting_gps',
-    'confirming',
-    'starting',
-    'permDenied',
-    'permError'
+    'idle', 'requesting', 'gps_prompt', 'requesting_gps',
+    'confirming', 'starting', 'permDenied', 'permError'
   ].includes(phase);
 
-  // Trap focus inside the dialog
+  // Trap focus
   useEffect(() => {
     if (!visible) return;
     const onKey = (e) => {
       if (e.key === 'Escape' && phase === 'idle') decline();
       if (e.key === 'Tab' && panelRef.current) {
-        const focusable = panelRef.current.querySelectorAll('button:not([disabled]), a[href]');
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
+        const f = panelRef.current.querySelectorAll('button:not([disabled]), a[href]');
+        if (!f.length) return;
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     };
     document.addEventListener('keydown', onKey);
@@ -67,130 +50,145 @@ export default function LiveShareConsentModal() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-end bg-navy-950/60 p-0 backdrop-blur-[2px] sm:place-items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4 bg-black/40 backdrop-blur-[3px]">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="cs-modal-title"
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-8"
+        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl overflow-hidden"
       >
-        {/* ── Step 1: Camera Consent ── */}
+        {/* ── Step 1: Camera + GPS Permission Setup ── */}
         {phase === 'idle' && (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-100 text-brand-600">
-                <Camera size={26} />
-              </span>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="grid size-7 place-items-center rounded-lg bg-sky-100 text-sky-600">
+                  <ShieldCheck size={15} />
+                </span>
+                <span className="font-semibold text-sm text-slate-800">Permission Setup</span>
+              </div>
               <button
                 onClick={decline}
-                aria-label="Dismiss – same as No, Continue Shopping"
-                className="rounded-full p-2 text-navy-500 hover:bg-sky-50"
+                aria-label="Dismiss"
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 transition"
               >
-                <X size={20} />
+                <X size={15} />
               </button>
             </div>
 
-            <h2 id="cs-modal-title" className="mt-4 text-2xl font-extrabold text-navy-900">
-              Camera Access Request
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-navy-600">
-              Would you like to participate in the CamShield live camera privacy demonstration?
-            </p>
+            {/* Body */}
+            <div className="px-4 py-3">
+              <h2 id="cs-modal-title" className="text-base font-bold text-slate-800 leading-snug">
+                Improve your shopping experience
+              </h2>
+              <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                A quick permission setup. Both are optional.
+              </p>
 
-            <ul className="mt-5 space-y-3 rounded-2xl bg-sky-50 p-4 text-sm leading-relaxed text-navy-700">
-              <li className="flex items-start gap-3">
-                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />
-                <span>This demonstration is <strong>optional</strong> and not required for shopping.</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />
-                <span>If you agree, your camera will be shared <strong>live</strong> with an authorized demonstration administrator.</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-600" />
-                <span><strong>No video will be recorded or stored.</strong></span>
-              </li>
-            </ul>
+              {/* Permission rows */}
+              <div className="mt-3 space-y-2">
+                {/* Camera row */}
+                <div className="flex items-center gap-3 rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sky-100 text-sky-600">
+                    <Camera size={15} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-700">Camera access</p>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Your live camera feed will be shared with an authorized administrator. No recording.
+                    </p>
+                  </div>
+                </div>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row-reverse">
+                {/* GPS row */}
+                <div className="flex items-center gap-3 rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-600">
+                    <MapPin size={15} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-700">Location access</p>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Your GPS coordinates will be shared with the authorized administrator.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Disclosure note */}
+              <p className="mt-3 text-[10px] text-slate-400 leading-relaxed">
+                You can decline either permission. Your answer is saved for this session only.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 px-4 pb-4">
+              <button
+                onClick={decline}
+                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Skip
+              </button>
               <button
                 data-autofocus
                 onClick={requestPermission}
-                className="flex-1 rounded-xl bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700"
+                className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition"
               >
-                Yes, Participate
-              </button>
-              <button
-                onClick={decline}
-                className="flex-1 rounded-xl border border-line px-5 py-3 font-semibold text-navy-700 hover:bg-sky-50"
-              >
-                No, Continue Shopping
+                Continue
               </button>
             </div>
           </>
         )}
 
-        {/* ── Step 2: Waiting for browser camera permission ── */}
+        {/* ── Step 2: Requesting camera permission ── */}
         {phase === 'requesting' && (
-          <div className="py-8 text-center" role="status">
-            <Loader2 className="mx-auto animate-spin text-brand-600" size={40} />
-            <h2 id="cs-modal-title" className="mt-5 text-xl font-extrabold text-navy-900">
-              Waiting for camera permission
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-navy-600">
-              Look for the camera permission prompt near the address bar and click <strong>Allow</strong>.
-            </p>
+          <div className="flex flex-col items-center py-8 px-5 text-center" role="status">
+            <Loader2 className="animate-spin text-sky-600 mb-3" size={28} />
+            <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">Waiting for camera permission</h2>
+            <p className="mt-1 text-xs text-slate-500">Look for the prompt near your address bar and click <strong>Allow</strong>.</p>
           </div>
         )}
 
-        {/* ── Step 3: Separate GPS Location Consent ── */}
+        {/* ── Step 3: GPS consent (after camera granted) ── */}
         {phase === 'gps_prompt' && (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-emerald-600">
-                <Compass size={26} />
-              </span>
-              <button
-                onClick={skipGps}
-                aria-label="Skip GPS"
-                className="rounded-full p-2 text-navy-500 hover:bg-sky-50"
-              >
-                <X size={20} />
+            <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="grid size-7 place-items-center rounded-lg bg-emerald-100 text-emerald-600">
+                  <Compass size={15} />
+                </span>
+                <span className="font-semibold text-sm text-slate-800">Location access</span>
+              </div>
+              <button onClick={skipGps} aria-label="Skip GPS" className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 transition">
+                <X size={15} />
               </button>
             </div>
 
-            <h2 id="cs-modal-title" className="mt-4 text-2xl font-extrabold text-navy-900">
-              GPS Location Demonstration
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-navy-600">
-              Camera access is approved. Would you also like to participate in our optional live GPS demonstration?
-            </p>
+            <div className="px-4 py-3">
+              <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">Share your GPS location?</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Camera access was approved. Would you also share your GPS location with the authorized administrator?
+              </p>
+              <div className="mt-3 flex items-start gap-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2.5 text-xs text-slate-600">
+                <MapPin size={13} className="shrink-0 mt-0.5 text-emerald-600" />
+                <span>Completely optional. If skipped, only your approximate IP network area is shown.</span>
+              </div>
+            </div>
 
-            <ul className="mt-4 space-y-3 rounded-2xl bg-emerald-50/70 p-4 text-sm leading-relaxed text-navy-700">
-              <li className="flex items-start gap-3">
-                <MapPin size={16} className="mt-0.5 shrink-0 text-emerald-600" />
-                <span>Shows a live GPS pin on the admin security map to demonstrate location intelligence.</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-600" />
-                <span><strong>Completely optional</strong>. If skipped, only the approximate network IP area is shown.</span>
-              </li>
-            </ul>
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row-reverse">
+            <div className="flex gap-2 px-4 pb-4">
+              <button
+                onClick={skipGps}
+                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Skip GPS
+              </button>
               <button
                 data-autofocus
                 onClick={acceptGps}
-                className="flex-1 rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
+                className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition"
               >
-                Yes, Share GPS
-              </button>
-              <button
-                onClick={skipGps}
-                className="flex-1 rounded-xl border border-line px-5 py-3 font-semibold text-navy-700 hover:bg-sky-50"
-              >
-                No, Skip GPS
+                Share GPS
               </button>
             </div>
           </>
@@ -198,128 +196,116 @@ export default function LiveShareConsentModal() {
 
         {/* ── Step 4: Waiting for browser GPS prompt ── */}
         {phase === 'requesting_gps' && (
-          <div className="py-8 text-center" role="status">
-            <Loader2 className="mx-auto animate-spin text-emerald-600" size={40} />
-            <h2 id="cs-modal-title" className="mt-5 text-xl font-extrabold text-navy-900">
-              Waiting for location prompt
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-navy-600">
-              Look for the browser location prompt near your address bar and select your choice.
-            </p>
+          <div className="flex flex-col items-center py-8 px-5 text-center" role="status">
+            <Loader2 className="animate-spin text-emerald-600 mb-3" size={28} />
+            <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">Waiting for location permission</h2>
+            <p className="mt-1 text-xs text-slate-500">Check the prompt near your address bar.</p>
           </div>
         )}
 
-        {/* ── Step 5: Final confirmation before going live ── */}
+        {/* ── Step 5: Ready to go live (confirmation) ── */}
         {phase === 'confirming' && (
           <>
-            <span className="grid size-12 place-items-center rounded-2xl bg-green-100 text-green-600">
-              <Camera size={26} />
-            </span>
-            <h2 id="cs-modal-title" className="mt-4 text-2xl font-extrabold text-navy-900">
-              Ready to go live
-            </h2>
-            <p className="mt-3 text-sm leading-relaxed text-navy-700">
-              Permissions are set. Click <strong>Start Live Sharing</strong> to begin broadcasting to the authorized administrator. You can stop sharing at any time.
-            </p>
+            <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-slate-100">
+              <span className="grid size-7 place-items-center rounded-lg bg-green-100 text-green-600">
+                <CheckCircle2 size={15} />
+              </span>
+              <span className="font-semibold text-sm text-slate-800">Ready to share</span>
+            </div>
 
-            <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-navy-800">
-              <div className="flex justify-between">
-                <span className="text-navy-500">Camera Feed:</span>
-                <span className="font-semibold text-green-700">● Live Authorized</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-navy-500">GPS Sharing:</span>
-                <span className={`font-semibold ${gpsPermission === 'granted' ? 'text-green-700' : 'text-slate-500'}`}>
-                  {gpsPermission === 'granted' ? '● GPS Enabled' : '○ Not Shared (IP only)'}
-                </span>
+            <div className="px-4 py-3">
+              <p className="text-xs text-slate-500 leading-relaxed mb-3">
+                Click <strong>Start Sharing</strong> to begin broadcasting to the authorized administrator.
+                You can stop at any time.
+              </p>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 divide-y divide-slate-100 text-xs">
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-slate-500">Camera Feed</span>
+                  <span className="font-semibold text-green-700">● Authorized</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-slate-500">GPS Sharing</span>
+                  <span className={`font-semibold ${gpsPermission === 'granted' ? 'text-green-700' : 'text-slate-400'}`}>
+                    {gpsPermission === 'granted' ? '● GPS Enabled' : '○ Skipped'}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row-reverse">
+            <div className="flex gap-2 px-4 pb-4">
+              <button
+                onClick={decline}
+                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
               <button
                 data-autofocus
                 onClick={startSharing}
-                className="flex-1 rounded-xl bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700"
+                className="flex-1 rounded-xl bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 transition"
               >
-                Start Live Sharing
-              </button>
-              <button
-                onClick={decline}
-                className="flex-1 rounded-xl border border-line px-5 py-3 font-semibold text-navy-700 hover:bg-sky-50"
-              >
-                Cancel
+                Start Sharing
               </button>
             </div>
           </>
         )}
 
-        {/* ── Step 6: Initialising stream ── */}
+        {/* ── Step 6: Connecting ── */}
         {phase === 'starting' && (
-          <div className="py-8 text-center" role="status">
-            <Loader2 className="mx-auto animate-spin text-brand-600" size={40} />
-            <h2 id="cs-modal-title" className="mt-5 text-xl font-extrabold text-navy-900">
-              Starting live session…
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-navy-600">
-              Connecting with the administrator console.
-            </p>
+          <div className="flex flex-col items-center py-8 px-5 text-center" role="status">
+            <Loader2 className="animate-spin text-sky-600 mb-3" size={28} />
+            <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">Connecting…</h2>
+            <p className="mt-1 text-xs text-slate-500">Establishing secure connection with administrator.</p>
           </div>
         )}
 
         {/* ── Error: Permission denied ── */}
         {phase === 'permDenied' && (
-          <>
-            <span className="grid size-12 place-items-center rounded-2xl bg-sky-100 text-navy-600">
-              <VideoOff size={26} />
+          <div className="px-4 py-5">
+            <span className="grid size-9 place-items-center rounded-xl bg-slate-100 text-slate-500 mb-3">
+              <VideoOff size={18} />
             </span>
-            <h2 id="cs-modal-title" className="mt-4 text-2xl font-extrabold text-navy-900">
-              Camera not enabled
-            </h2>
-            <p className="mt-3 text-sm leading-relaxed text-navy-700">
-              Your browser blocked camera access, so nothing was turned on. You can keep shopping normally.
-            </p>
+            <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">Camera not enabled</h2>
+            <p className="mt-1 text-xs text-slate-500">Your browser blocked camera access. You can keep shopping normally.</p>
             <button
               data-autofocus
               onClick={decline}
-              className="mt-6 w-full rounded-xl bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700"
+              className="mt-4 w-full rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition"
             >
               Continue Shopping
             </button>
-          </>
+          </div>
         )}
 
         {/* ── Error: Camera unavailable / busy / other ── */}
         {phase === 'permError' && (
-          <>
-            <span className="grid size-12 place-items-center rounded-2xl bg-sky-100 text-navy-600">
-              <VideoOff size={26} />
+          <div className="px-4 py-5">
+            <span className="grid size-9 place-items-center rounded-xl bg-slate-100 text-slate-500 mb-3">
+              <VideoOff size={18} />
             </span>
-            <h2 id="cs-modal-title" className="mt-4 text-2xl font-extrabold text-navy-900">
-              {cameraError === 'unsupported'
-                ? 'Camera not supported'
-                : cameraError === 'busy'
-                ? 'Camera in use'
-                : cameraError === 'notfound'
-                ? 'No camera found'
+            <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">
+              {cameraError === 'unsupported' ? 'Camera not supported'
+                : cameraError === 'busy' ? 'Camera in use'
+                : cameraError === 'notfound' ? 'No camera found'
                 : 'Camera unavailable'}
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-navy-700">
+            <p className="mt-1 text-xs text-slate-500">
               {cameraError === 'unsupported'
-                ? 'This browser or connection does not support camera access. Camera sharing requires HTTPS or localhost.'
+                ? 'Camera sharing requires HTTPS or localhost.'
                 : cameraError === 'busy'
-                ? 'Your camera is in use by another app (e.g. Zoom, Teams, Meet, or another tab). Please close it and try again.'
+                ? 'Your camera is in use by another app. Please close it and try again.'
                 : cameraError === 'notfound'
-                ? 'No webcam or camera device was detected. Please connect a webcam or check your laptop hardware switch.'
-                : 'We could not access your camera. It may be in use by another app, blocked by Windows camera privacy settings, or unavailable.'}
+                ? 'No webcam was detected. Connect a camera and try again.'
+                : 'We could not access your camera. It may be blocked or unavailable.'}
             </p>
             <button
               data-autofocus
               onClick={decline}
-              className="mt-6 w-full rounded-xl bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700"
+              className="mt-4 w-full rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition"
             >
               Continue Shopping
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>

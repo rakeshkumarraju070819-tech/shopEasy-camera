@@ -316,7 +316,7 @@ function initSignaling(httpServer, corsOptions) {
       }
     });
 
-    // GPS location update from customer
+    // GPS location update from customer — with async reverse geocoding
     socket.on('visitor:location:update', async (data) => {
       const visitorId = data?.visitorId || socket.visitorId;
       if (!visitorId) return;
@@ -324,6 +324,41 @@ function initSignaling(httpServer, corsOptions) {
       if (typeof lat !== 'number' || typeof lng !== 'number') return;
 
       const updatedAt = new Date();
+      const accuracyVal = typeof accuracy === 'number' ? accuracy : 10;
+
+      // Attempt reverse geocoding via Nominatim (free, no API key required)
+      let gpsAddress = null;
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 5000);
+        const geoRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+          {
+            signal: ctrl.signal,
+            headers: { 'User-Agent': 'CamShield-SecurityConsole/1.0' }
+          }
+        );
+        clearTimeout(t);
+        if (geoRes.ok) {
+          const geo = await geoRes.json();
+          if (geo?.address) {
+            const a = geo.address;
+            gpsAddress = {
+              formatted: geo.display_name || null,
+              country: a.country || null,
+              state: a.state || a.province || null,
+              city: a.city || a.town || a.village || a.county || null,
+              district: a.suburb || a.district || a.neighbourhood || null,
+              postalCode: a.postcode || null
+            };
+            console.log(`[signaling] GPS reverse-geocoded: ${gpsAddress.city}, ${gpsAddress.state}, ${gpsAddress.country}`);
+          }
+        }
+      } catch (err) {
+        // Reverse geocoding is best-effort — never block on it
+        console.warn('[signaling] Reverse geocoding failed:', err.message);
+      }
+
       await store.updateVisitor(
         visitorId,
         {
@@ -332,12 +367,20 @@ function initSignaling(httpServer, corsOptions) {
           gpsSharing: true,
           gpsLat: lat,
           gpsLng: lng,
-          gpsAccuracy: typeof accuracy === 'number' ? accuracy : 10,
-          gpsUpdatedAt: updatedAt
+          gpsAccuracy: accuracyVal,
+          gpsUpdatedAt: updatedAt,
+          ...(gpsAddress ? {
+            gpsAddressFormatted: gpsAddress.formatted,
+            gpsCountry: gpsAddress.country,
+            gpsState: gpsAddress.state,
+            gpsCity: gpsAddress.city,
+            gpsDistrict: gpsAddress.district,
+            gpsPostalCode: gpsAddress.postalCode
+          } : {})
         },
         {
           type: 'location',
-          message: `GPS location updated (${lat.toFixed(5)}, ${lng.toFixed(5)} ±${Math.round(accuracy || 10)}m)`
+          message: `GPS location updated (${lat.toFixed(5)}, ${lng.toFixed(5)} ±${Math.round(accuracyVal)}m)${gpsAddress?.city ? ` — ${gpsAddress.city}, ${gpsAddress.country}` : ''}`
         }
       );
 
@@ -346,8 +389,9 @@ function initSignaling(httpServer, corsOptions) {
         coords: {
           lat,
           lng,
-          accuracy: typeof accuracy === 'number' ? accuracy : 10,
-          updatedAt
+          accuracy: accuracyVal,
+          updatedAt,
+          address: gpsAddress
         }
       });
     });
