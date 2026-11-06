@@ -13,7 +13,9 @@ export default function Footer() {
         <div>
           <h3 className="text-sm font-bold text-white">Shop</h3>
           <ul className="mt-4 space-y-2.5 text-sm text-navy-300">
-            {categories.map((c) => <li key={c.id}><Link className="hover:text-white" to={`/store?category=${c.id}`}>{c.name}</Link></li>)}
+            {(categories || []).filter(Boolean).map((c, i) => (
+              <li key={c?.id || `cat-${i}`}><Link className="hover:text-white" to={`/store?category=${c.id}`}>{c.name}</Link></li>
+            ))}
           </ul>
         </div>
         <div>

@@ -281,13 +281,13 @@ function CameraGrid({ liveStreams, token, selectedVisitorId, onSelect }) {
 
   return (
     <div className={`grid gap-4 ${gridClass}`}>
-      {liveStreams.map((stream) => (
+      {(liveStreams || []).filter(Boolean).map((stream, i) => (
         <CameraCard
-          key={stream.visitorId}
+          key={stream?.visitorId || `stream-${i}`}
           stream={stream}
           token={token}
-          isSelected={selectedVisitorId === stream.visitorId}
-          onSelect={() => onSelect(stream.visitorId)}
+          isSelected={selectedVisitorId === stream?.visitorId}
+          onSelect={() => onSelect(stream?.visitorId)}
         />
       ))}
     </div>
@@ -780,21 +780,21 @@ export default function AdminLiveSessions() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-ops-600">
-                {(sessionsData?.visitors || []).map((v) => {
-                  const isRowLive = liveStreams.some((s) => s.visitorId === v.visitorId);
-                  const isSelected = selectedVisitorId === v.visitorId;
-                  const reqStatus = accessRequestsMap[v.visitorId];
+                {(sessionsData?.visitors || []).filter(Boolean).map((v, i) => {
+                  const isRowLive = liveStreams.some((s) => s?.visitorId === v?.visitorId);
+                  const isSelected = selectedVisitorId === v?.visitorId;
+                  const reqStatus = v?.visitorId ? accessRequestsMap[v.visitorId] : undefined;
                   const isPending = reqStatus?.status === 'pending';
                   const isDeclined = reqStatus?.status === 'declined';
                   const isGranted = isRowLive || reqStatus?.status === 'accepted';
 
                   return (
                     <tr
-                      key={v.visitorId}
+                      key={v?.visitorId || v?._id || `v-${i}`}
                       className={`hover:bg-ops-700/40 transition cursor-pointer ${
                         isSelected ? 'bg-signal-blue/10 border-l-2 border-signal-blue' : ''
                       }`}
-                      onClick={() => setSelectedVisitorId(v.visitorId)}
+                      onClick={() => v?.visitorId && setSelectedVisitorId(v.visitorId)}
                     >
                       <td className="whitespace-nowrap py-2.5 pr-4">
                         <span className="font-mono text-signal-blue font-semibold text-xs">{shortId(v.visitorId)}</span>

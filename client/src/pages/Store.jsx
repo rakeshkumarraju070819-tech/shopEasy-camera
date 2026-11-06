@@ -50,13 +50,15 @@ export default function Store() {
 
       <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Filter by category">
         <button className={chip(!category && !deals)} onClick={() => { const n = new URLSearchParams(params); n.delete('category'); n.delete('deals'); setParams(n); }}>All</button>
-        {categories.map((c) => <button key={c.id} className={chip(category === c.id)} onClick={() => set('category', category === c.id ? '' : c.id)}>{c.name}</button>)}
+        {(categories || []).filter(Boolean).map((c, i) => (
+          <button key={c?.id || `cat-${i}`} className={chip(category === c.id)} onClick={() => set('category', category === c.id ? '' : c.id)}>{c.name}</button>
+        ))}
         <button className={chip(deals)} onClick={() => set('deals', deals ? '' : '1')}>Deals</button>
       </div>
 
       {list.length ? (
         <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {list.map((p) => <ProductCard key={p.id} product={p} />)}
+          {(list || []).filter(Boolean).map((p, i) => <ProductCard key={p?.id || `prod-${i}`} product={p} />)}
         </div>
       ) : (
         <div className="mt-16 text-center">

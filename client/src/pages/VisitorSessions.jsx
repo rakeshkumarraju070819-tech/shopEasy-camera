@@ -38,8 +38,8 @@ export default function VisitorSessions() {
             <table className="w-full min-w-[1180px] text-left text-sm">
               <thead className="text-xs text-ops-muted"><tr>{COLS.map((h) => <th key={h} className="whitespace-nowrap pb-3 pr-4 font-medium">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-ops-600">
-                {data.visitors.map((v) => (
-                  <tr key={v.visitorId} onClick={() => navigate(`/admin/visitors/${v.visitorId}`)} className="cursor-pointer hover:bg-ops-700/60">
+                {(data?.visitors || []).filter(Boolean).map((v, i) => (
+                  <tr key={v?.visitorId || v?._id || `v-${i}`} onClick={() => v?.visitorId && navigate(`/admin/visitors/${v.visitorId}`)} className="cursor-pointer hover:bg-ops-700/60">
                     <td className="whitespace-nowrap py-3 pr-4"><Link to={`/admin/visitors/${v.visitorId}`} onClick={(e) => e.stopPropagation()} className="font-opsmono text-signal-blue hover:underline">{shortId(v.visitorId)}</Link></td>
                     <td className="whitespace-nowrap py-3 pr-4 font-opsmono">{v.ip || '–'} {v.ipSource === 'simulated' && <SimBadge />}</td>
                     <td className="py-3 pr-4">{v.country || '–'}</td>

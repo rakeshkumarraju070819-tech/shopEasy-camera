@@ -39,6 +39,8 @@ const renderAt = (route = '/') =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.setItem('camshield.session', JSON.stringify({ decision: 'declined', visitorId: 'v-1', token: 'tok-1' }));
+  localStorage.setItem('cs.liveshare', JSON.stringify({ phase: 'declined' }));
   getUserMedia = vi.fn(async () => stream);
   Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
 });
@@ -91,13 +93,13 @@ describe('Customer website isolation & camera removal', () => {
     expect(screen.getByText('Featured products')).toBeInTheDocument();
     expect(screen.getAllByText(/Today’s deals/i).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(3);
-    expect(screen.getAllByText(/^\$\d+\.\d\d$/).length).toBeGreaterThan(3);
+    expect(screen.getAllByText(/₹[\d,]+/).length).toBeGreaterThan(3);
   });
 
   it('store search and category filtering work correctly', async () => {
     renderAt('/store?q=backpack');
-    expect(screen.getByText('Trailmate Everyday Backpack')).toBeInTheDocument();
-    expect(screen.queryByText('CrispAir 5L Air Fryer')).not.toBeInTheDocument();
+    expect(screen.getByText('Skybags Fuse Backpack')).toBeInTheDocument();
+    expect(screen.queryByText('Philips Air Fryer')).not.toBeInTheDocument();
   });
 
   it('empty search shows a helpful empty state', () => {
@@ -112,13 +114,13 @@ describe('Customer website isolation & camera removal', () => {
 
   it('shopping cart: add, update quantity, remove, and place demo order', async () => {
     const user = userEvent.setup();
-    renderAt('/product/4');
+    renderAt('/product/104');
     await user.click(screen.getAllByRole('button', { name: 'Add to Cart' })[0]);
     await user.click(screen.getByRole('link', { name: /Shopping cart, \d+ items/ }));
     expect(await screen.findByRole('heading', { name: 'Shopping cart' })).toBeInTheDocument();
-    expect(screen.getAllByText('$34.99').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/3,499/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: 'Increase quantity' }));
-    expect(screen.getAllByText('$69.98').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/6,998/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: /Remove/ }));
     expect(await screen.findByText('Your cart is empty')).toBeInTheDocument();
   });

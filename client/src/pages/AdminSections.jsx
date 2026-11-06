@@ -20,7 +20,7 @@ export function IPIntelligence() {
       {error ? <ErrorNote message={error} onRetry={reload} /> : loading && !data ? <Loading /> : (
         <>
           <Panel title="Estimated locations">
-            <LocationMap height={360} points={data.visitors.map((v) => ({ lat: v.lat, lng: v.lng, label: `${v.city || 'Unknown'}, ${v.country || ''} (${v.ip})`, color: v.consentDecision === 'accepted' ? '#4b93ff' : '#ef4b50' }))} />
+            <LocationMap height={360} points={(data?.visitors || []).filter(Boolean).map((v) => ({ lat: v?.lat, lng: v?.lng, label: `${v?.city || 'Unknown'}, ${v?.country || ''} (${v?.ip || ''})`, color: v?.consentDecision === 'accepted' ? '#4b93ff' : '#ef4b50' }))} />
             <p className="mt-1 text-xs text-ops-muted">Blue: consent accepted. Red: declined or not answered.</p>
           </Panel>
           <Panel title="Lookup results" className="mt-6">
@@ -28,8 +28,8 @@ export function IPIntelligence() {
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="text-xs text-ops-muted"><tr><Th>Visitor</Th><Th>Public IP</Th><Th>Country</Th><Th>City</Th><Th>Region</Th><Th>ISP</Th><Th>ASN</Th><Th>Source</Th></tr></thead>
                 <tbody className="divide-y divide-ops-600">
-                  {data.visitors.map((v) => (
-                    <tr key={v.visitorId}>
+                  {(data?.visitors || []).filter(Boolean).map((v, i) => (
+                    <tr key={v?.visitorId || v?._id || `v-${i}`}>
                       <td className="py-3 pr-4">{idLink(v)}</td><td className="py-3 pr-4 font-opsmono">{v.ip || '–'}</td>
                       <td className="py-3 pr-4">{v.country || '–'}</td><td className="py-3 pr-4">{v.city || '–'}</td><td className="py-3 pr-4">{v.region || '–'}</td>
                       <td className="py-3 pr-4 text-ops-muted">{v.isp || '–'}</td><td className="py-3 pr-4 font-opsmono">{v.asn || '–'}</td>
@@ -58,8 +58,8 @@ export function ConsentRecords() {
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="text-xs text-ops-muted"><tr><Th>Visitor</Th><Th>Consent decision</Th><Th>Decided at</Th><Th>Browser permission</Th><Th>Camera now</Th></tr></thead>
               <tbody className="divide-y divide-ops-600">
-                {data.visitors.map((v) => (
-                  <tr key={v.visitorId}>
+                {(data?.visitors || []).filter(Boolean).map((v, i) => (
+                  <tr key={v?.visitorId || v?._id || `v-${i}`}>
                     <td className="py-3 pr-4">{idLink(v)} {v.isSimulated && <SimBadge />}</td>
                     <td className="py-3 pr-4"><ConsentBadge value={v.consentDecision} /></td>
                     <td className="py-3 pr-4 text-ops-muted">{fmtDate(v.consentAt)}</td>

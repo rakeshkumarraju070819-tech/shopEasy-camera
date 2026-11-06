@@ -23,14 +23,14 @@ export default function ProductDetails() {
     );
   }
 
-  const cat = categories.find((c) => c.id === product.category);
-  const related = products.filter((p) => p.category === product.category && p.id !== product.id).slice(0, 4);
-  const handleAdd = () => { add(product.id, qty); setAdded(true); setTimeout(() => setAdded(false), 1500); };
+  const cat = categories.find((c) => c && c.id === product.category);
+  const related = (products || []).filter((p) => p && p.category === product.category && String(p.id) !== String(product.id)).slice(0, 4);
+  const handleAdd = () => { if (product?.id) { add(product.id, qty); setAdded(true); setTimeout(() => setAdded(false), 1500); } };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <nav className="text-sm text-navy-500" aria-label="Breadcrumb">
-        <Link to="/" className="hover:text-brand-600">Home</Link> / <Link to={`/store?category=${product.category}`} className="hover:text-brand-600">{cat?.name}</Link> / <span className="text-navy-900">{product.name}</span>
+        <Link to="/" className="hover:text-brand-600">Home</Link> / <Link to={`/store?category=${product.category}`} className="hover:text-brand-600">{cat?.name || 'Category'}</Link> / <span className="text-navy-900">{product.name}</span>
       </nav>
       <div className="mt-6 grid gap-10 lg:grid-cols-2">
         <ProductImage product={product} iconSize={120} className="aspect-square w-full rounded-3xl" />
@@ -55,7 +55,7 @@ export default function ProductDetails() {
           </div>
 
           <ul className="mt-8 space-y-3 text-sm text-navy-700">
-            <li className="flex items-center gap-3"><Truck size={18} className="text-brand-600" /> Free delivery on orders over $50</li>
+            <li className="flex items-center gap-3"><Truck size={18} className="text-brand-600" /> Free delivery on orders over ₹499</li>
             <li className="flex items-center gap-3"><RotateCcw size={18} className="text-brand-600" /> 30-day easy returns</li>
           </ul>
         </div>
@@ -65,7 +65,7 @@ export default function ProductDetails() {
         <section className="mt-16" aria-labelledby="related">
           <h2 id="related" className="text-2xl font-extrabold">You might also like</h2>
           <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {related.map((p) => <ProductCard key={p.id} product={p} />)}
+            {(related || []).filter(Boolean).map((p, i) => <ProductCard key={p?.id || `rel-${i}`} product={p} />)}
           </div>
         </section>
       )}

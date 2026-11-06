@@ -172,5 +172,14 @@ export const products = [
   }
 ];
 
-export const getProduct = (id) => products.find((p) => String(p.id) === String(id));
+export const getProduct = (id) => {
+  if (id == null) return undefined;
+  const found = products.find((p) => String(p.id) === String(id));
+  if (found) return found;
+  const num = Number(id);
+  if (Number.isInteger(num) && num >= 1 && num <= products.length) {
+    return products.find((p) => p.id === num + 100) || products[num - 1];
+  }
+  return undefined;
+};
 export const formatPrice = (n) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
