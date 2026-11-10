@@ -16,7 +16,8 @@ export default function LiveShareConsentModal() {
     requestPermission,
     acceptGps,
     skipGps,
-    startSharing
+    startSharing,
+    resumeSharing
   } = useLiveShare();
 
   const panelRef = useRef(null);

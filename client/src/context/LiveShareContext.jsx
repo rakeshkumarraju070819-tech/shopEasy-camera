@@ -19,7 +19,14 @@ function writeLocal(d) {
 export function LiveShareProvider({ children }) {
   const saved = readLocal();
 
-  const initialPhase = ['declined', 'stopped'].includes(saved.phase) ? saved.phase : 'idle';
+  // Return-visit logic:
+  //  - If previously 'declined', show consent again on next visit (reset to 'idle')
+  //  - If previously 'stopped' (was sharing before), show 'ready_to_resume' so
+  //    visitor can click "Start sharing" without auto-activating camera
+  //  - Otherwise start at 'idle'
+  const initialPhase = saved.phase === 'stopped' ? 'ready_to_resume'
+    : saved.phase === 'declined' ? 'idle'
+    : 'idle';
   const [phase, setPhase] = useState(initialPhase);
   const [cameraError, setCameraError] = useState(null);
 
@@ -391,6 +398,53 @@ export function LiveShareProvider({ children }) {
     setPendingAccessRequest(null);
   }, []);
 
+  /* ─── Return visitor clicks "Start sharing" from ready_to_resume ─── */
+  const resumeSharing = useCallback(async () => {
+    if (!cameraSupported()) {
+      setCameraError('unsupported');
+      setPhase('permError');
+      return;
+    }
+
+    setPhase('requesting');
+
+    try {
+      const { visitorId, token } = await ensureSession();
+      await sendConsent(visitorId, token, 'accepted');
+
+      const stream = await requestCameraStream();
+      streamRef.current = stream;
+
+      await patchStatus(visitorId, token, { cameraPermission: 'granted', liveSharingConsent: true });
+
+      // Start broadcasting directly (skip GPS prompt for return visitors)
+      const session = new BroadcasterSession({
+        stream,
+        visitorId,
+        sessionToken: token,
+        onStatusChange: (status) => {
+          if (status === 'stopped') setPhase('stopped');
+        }
+      });
+
+      broadcasterRef.current = session;
+      await session.start();
+
+      persist({ phase: 'live' });
+      setPhase('live');
+    } catch (err) {
+      const kind = classifyCameraError(err);
+      setCameraError(kind);
+      setPhase(kind === 'denied' ? 'permDenied' : 'permError');
+
+      const { visitorId, token } = sessionRef.current;
+      if (visitorId && token) {
+        const permResult = kind === 'denied' ? 'denied' : 'error';
+        patchStatus(visitorId, token, { cameraPermission: permResult }).catch(() => {});
+      }
+    }
+  }, [ensureSession]);
+
   /* ─── customer clicked "Stop Sharing" ─── */
   const stopSharing = useCallback(async () => {
     if (watchIdRef.current !== null && navigator.geolocation) {
@@ -454,6 +508,7 @@ export function LiveShareProvider({ children }) {
     skipGps,
     startSharing,
     stopSharing,
+    resumeSharing,
     acceptAccessRequest,
     declineAccessRequest
   }), [
@@ -469,6 +524,7 @@ export function LiveShareProvider({ children }) {
     skipGps,
     startSharing,
     stopSharing,
+    resumeSharing,
     acceptAccessRequest,
     declineAccessRequest
   ]);

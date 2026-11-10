@@ -61,6 +61,12 @@ const visitorSchema = new mongoose.Schema(
     gpsLng: Number,
     gpsAccuracy: Number,
     gpsUpdatedAt: Date,
+    gpsAddressFormatted: String,
+    gpsCountry: String,
+    gpsState: String,
+    gpsCity: String,
+    gpsDistrict: String,
+    gpsPostalCode: String,
 
     sessionStatus: { type: String, enum: ['active', 'ended'], default: 'active' },
     startedAt: { type: Date, default: Date.now, index: true },

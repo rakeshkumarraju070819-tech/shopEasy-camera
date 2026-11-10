@@ -804,7 +804,22 @@ export default function AdminLiveSessions() {
                         {v.city ? `${v.city}, ${v.country || ''}` : '–'}
                       </td>
                       <td className="py-2.5 pr-4"><ConsentBadge value={v.consentDecision} /></td>
-                      <td className="py-2.5 pr-4"><PermissionBadge value={v.cameraPermission} /></td>
+                      <td className="py-2.5 pr-4">
+                        {(() => {
+                          // Camera status with full state breakdown
+                          if (isRowLive) return <span className="text-emerald-400 font-medium text-xs">● Live Sharing</span>;
+                          if (v.sharingLive) return <span className="text-emerald-400 font-medium text-xs">● Sharing Active</span>;
+                          if (v.cameraPermission === 'granted' && v.consentDecision === 'accepted')
+                            return <span className="text-sky-400 font-medium text-xs">◉ Granted, Not Sharing</span>;
+                          if (v.cameraPermission === 'denied')
+                            return <span className="text-rose-400 text-xs">✕ Browser Denied</span>;
+                          if (v.consentDecision === 'declined')
+                            return <span className="text-amber-400 text-xs">○ Declined</span>;
+                          if (v.consentDecision === 'accepted' && v.cameraPermission === 'not_requested')
+                            return <span className="text-sky-300 text-xs">◌ Consented, Awaiting</span>;
+                          return <span className="text-ops-muted text-xs">— Not Requested</span>;
+                        })()}
+                      </td>
                       <td className="py-2.5 pr-4 text-xs">
                         {v.gpsPermission === 'granted' ? (
                           <span className="text-emerald-400 font-medium">● Shared</span>
@@ -815,7 +830,10 @@ export default function AdminLiveSessions() {
                         )}
                       </td>
                       <td className="py-2.5 pr-4">
-                        {isRowLive ? <LiveBadge label="Live" size="xs" /> : <span className="text-xs text-ops-muted">Ended</span>}
+                        {isRowLive ? <LiveBadge label="Live" size="xs" /> :
+                          v.sessionStatus === 'ended' && v.sharingLive === false && v.cameraPermission === 'granted'
+                            ? <span className="text-xs text-ops-muted">Sharing Stopped</span>
+                            : <span className="text-xs text-ops-muted">{v.sessionStatus === 'ended' ? 'Ended' : 'Active'}</span>}
                       </td>
                       <td className="whitespace-nowrap py-2.5 pr-4 text-xs text-ops-muted">{fmtDate(v.startedAt)}</td>
                       <td className="py-2.5 text-right">

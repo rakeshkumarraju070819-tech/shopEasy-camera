@@ -1,14 +1,56 @@
-import { Compass, Square, Video } from 'lucide-react';
+import { Compass, Play, Square, Video, VideoOff } from 'lucide-react';
 import { useLiveShare } from '../context/LiveShareContext';
 
 /**
- * Compact camera-sharing status indicator + stop button.
+ * Compact camera-sharing status indicator + controls in the Navbar.
+ *
+ * Visible states:
+ *  1. phase === 'live'            → "Camera ON" badge + Stop Sharing button
+ *  2. phase === 'ready_to_resume' → "Start Sharing" button for return visitors
+ *  3. phase === 'stopped'         → Muted "Sharing stopped" label
+ *
  * Height ~28–30px, font 11px, minimal padding.
- * Soft green for ON, grey/white for Stop.
  */
 export default function LiveShareBanner() {
-  const { isLive, gpsPermission, stopSharing } = useLiveShare();
+  const { phase, isLive, gpsPermission, stopSharing, resumeSharing } = useLiveShare();
 
+  // ── Return visitor: show "Start Sharing" button ──
+  if (phase === 'ready_to_resume') {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex items-center gap-1.5 animate-fadeIn shrink-0"
+      >
+        <button
+          onClick={resumeSharing}
+          className="flex items-center gap-1 rounded-lg border border-sky-400/60 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 hover:border-sky-500 transition-colors shadow-xs leading-none"
+          aria-label="Start camera sharing"
+        >
+          <Play size={10} className="text-sky-600 shrink-0" />
+          Start Sharing
+        </button>
+      </div>
+    );
+  }
+
+  // ── Stopped state: subtle indicator ──
+  if (phase === 'stopped') {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex items-center gap-1 shrink-0"
+      >
+        <span className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-500 leading-none">
+          <VideoOff size={10} className="text-slate-400 shrink-0" />
+          Sharing stopped
+        </span>
+      </div>
+    );
+  }
+
+  // ── Live: show "Camera ON" badge + Stop button ──
   if (!isLive) return null;
 
   return (
