@@ -41,6 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.setItem('camshield.session', JSON.stringify({ decision: 'declined', visitorId: 'v-1', token: 'tok-1' }));
   localStorage.setItem('cs.liveshare', JSON.stringify({ phase: 'declined' }));
+  sessionStorage.setItem('cs.declined_session', 'true');
   getUserMedia = vi.fn(async () => stream);
   Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
 });

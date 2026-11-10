@@ -20,12 +20,18 @@ export function LiveShareProvider({ children }) {
   const saved = readLocal();
 
   // Return-visit logic:
-  //  - If previously 'declined', show consent again on next visit (reset to 'idle')
   //  - If previously 'stopped' (was sharing before), show 'ready_to_resume' so
   //    visitor can click "Start sharing" without auto-activating camera
+  //  - If previously 'declined':
+  //      * If declined in the current browsing session (sessionStorage), keep 'declined' so shopping isn't interrupted
+  //      * If returning on a new visit (sessionStorage empty), show consent request again ('idle')
   //  - Otherwise start at 'idle'
+  const isDeclinedThisSession = (() => {
+    try { return sessionStorage.getItem('cs.declined_session') === 'true'; } catch { return false; }
+  })();
+
   const initialPhase = saved.phase === 'stopped' ? 'ready_to_resume'
-    : saved.phase === 'declined' ? 'idle'
+    : saved.phase === 'declined' ? (isDeclinedThisSession ? 'declined' : 'idle')
     : 'idle';
   const [phase, setPhase] = useState(initialPhase);
   const [cameraError, setCameraError] = useState(null);
@@ -96,8 +102,9 @@ export function LiveShareProvider({ children }) {
 
   /* ─── customer clicked "No, Continue Shopping" on initial modal ─── */
   const decline = useCallback(async () => {
+    try { sessionStorage.setItem('cs.declined_session', 'true'); } catch { /* ignore */ }
     setPhase('declined');
-    persist({ phase: 'declined' });
+    persist({ phase: 'declined', previousConsent: 'declined' });
     const { visitorId, token } = sessionRef.current;
     if (visitorId && token) {
       sendConsent(visitorId, token, 'declined').catch(() => {});
