@@ -1,25 +1,27 @@
-import { AlertTriangle, Camera, CameraOff, Compass, Loader2, Video, VideoOff, X } from 'lucide-react';
+import { AlertTriangle, Camera, CameraOff, Compass, Loader2, ShieldCheck, Video, VideoOff, X } from 'lucide-react';
 import { useLiveShare } from '../context/LiveShareContext';
 
 /**
- * CameraShareBar — sequential camera-then-GPS permission controls in the navbar.
+ * CameraShareBar — all camera/GPS sharing controls for the navbar.
  *
- * Renders null when inactive (idle/stopped) so it takes zero navbar space.
+ * State rendering map:
  *
- * Sequential flow rendering:
+ *  pending_disclosure  → compact disclosure: "CamShield will share camera & location  Allow | Decline"
+ *  camera_requesting   → "Waiting for camera…"
+ *  gps_requesting +
+ *    gpsState=auto_requesting → "Waiting for location…"
+ *    gpsState=needs_gesture   → "Allow location? Allow | Skip"
+ *  starting            → "Starting…"
+ *  live                → [● Camera ON Stop] [● Location ON Stop / Share Location]
+ *  declined            → null (clean navbar)
+ *  stopped             → null (clean navbar — no auto-restart)
+ *  error               → small error notice + dismiss
+ *  cameraState=denied  → amber "Camera blocked" notice
+ *  cameraState=error   → red hardware error notice
  *
- *  cameraState='requesting'              → "Waiting for camera…"
- *  cameraState='needs_gesture'           → "Camera access needed — Allow ×"
- *  cameraState='denied'                  → "Camera blocked — allow in address bar ×"
- *  cameraState='error'                   → specific error + optional Retry ×
- *
- *  gpsState='auto_requesting'            → "Waiting for location…"  (after camera granted)
- *  gpsState='needs_gesture'              → "Allow location →  Skip"  (browser blocked auto GPS)
- *
- *  shareState='awaiting_consent'         → "Stream live video to admin? No thanks / Start Sharing"
- *  shareState='connecting'               → "Connecting…"
- *
- *  isLive=true                           → [● Camera ON  Stop] [● Location ON  Stop] / [Share Location]
+ * The "Stream live video to the administrator? No thanks / Start Sharing" banner
+ * has been REMOVED. The upfront disclosure IS the consent mechanism.
+ * After Allow is clicked, permissions are requested and sharing starts automatically.
  */
 export default function CameraShareBar() {
   const {
@@ -28,64 +30,64 @@ export default function CameraShareBar() {
     gpsState,
     shareState,
     isLive,
-    requestCamera,
-    dismissCameraError,
+    allowSharing,
+    declineSharing,
     requestGps,
     skipGps,
-    startSharing,
-    declineLiveVideo,
+    requestGpsWhileLive,
+    dismissCameraError,
     stopSharing,
     stopGps,
   } = useLiveShare();
 
-  // ── 1. Live — Camera ON + GPS ON/off + Stop ───────────────────────────────
+  // ── 1. LIVE — compact status pills ───────────────────────────────────────
   if (isLive) {
     return (
       <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-1.5">
         {/* Camera ON pill */}
-        <div className="flex items-center gap-1 rounded-lg border border-emerald-500/60 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm leading-none">
-          <span className="relative flex size-1.5 shrink-0">
+        <div className="flex items-center gap-1 rounded-full border border-emerald-500/60 bg-emerald-50 pl-1.5 pr-1 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm leading-none">
+          <span className="relative flex size-1.5 shrink-0 mr-0.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
           </span>
-          <Video size={11} className="text-emerald-700 shrink-0" />
+          <Video size={10} className="text-emerald-700 shrink-0 mr-0.5" />
           <span>Camera ON</span>
           <button
             onClick={stopSharing}
             aria-label="Stop camera sharing"
-            className="ml-1 rounded px-1 text-[10px] font-bold text-emerald-700 hover:bg-red-100 hover:text-red-700 transition-colors"
+            className="ml-1 rounded-full border border-emerald-200 px-1.5 text-[10px] font-bold text-emerald-600 hover:bg-red-100 hover:border-red-200 hover:text-red-700 transition-colors"
           >
-            Stop
+            × Stop
           </button>
         </div>
 
-        {/* GPS: ON with stop / requesting / Share Location button */}
+        {/* GPS pill — ON / requesting / add button */}
         {gpsState === 'granted' ? (
-          <div className="flex items-center gap-1 rounded-lg border border-emerald-400/50 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 leading-none">
-            <span className="relative flex size-1.5 shrink-0">
+          <div className="flex items-center gap-1 rounded-full border border-emerald-400/50 bg-emerald-50 pl-1.5 pr-1 py-1 text-[11px] font-semibold text-emerald-700 leading-none">
+            <span className="relative flex size-1.5 shrink-0 mr-0.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
               <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
             </span>
-            <Compass size={10} className="shrink-0" />
+            <Compass size={10} className="shrink-0 mr-0.5" />
             <span>Location ON</span>
             <button
               onClick={stopGps}
               aria-label="Stop location sharing"
-              className="ml-1 rounded px-1 text-[10px] font-bold text-emerald-700 hover:bg-red-100 hover:text-red-700 transition-colors"
+              className="ml-1 rounded-full border border-emerald-200 px-1.5 text-[10px] font-bold text-emerald-600 hover:bg-red-100 hover:border-red-200 hover:text-red-700 transition-colors"
             >
-              Stop
+              × Stop
             </button>
           </div>
         ) : gpsState === 'requesting' || gpsState === 'auto_requesting' ? (
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 leading-none">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 leading-none">
             <Loader2 size={10} className="animate-spin shrink-0" />
             <span>Location…</span>
           </div>
         ) : gpsState !== 'unavailable' && gpsState !== 'denied' ? (
           <button
-            onClick={requestGps}
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
-            aria-label="Share your GPS location with the administrator"
+            onClick={requestGpsWhileLive}
+            className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
+            aria-label="Share your GPS location"
           >
             <Compass size={10} className="shrink-0" />
             Share Location
@@ -95,75 +97,37 @@ export default function CameraShareBar() {
     );
   }
 
-  // ── 2. WebRTC connecting ─────────────────────────────────────────────────
-  if (shareState === 'connecting') {
+  // ── 2. Starting WebRTC ───────────────────────────────────────────────────
+  if (shareState === 'starting') {
     return (
-      <div className="flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-medium text-sky-700 leading-none">
-        <Loader2 size={12} className="animate-spin shrink-0" />
-        Connecting…
+      <div className="flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700 leading-none">
+        <Loader2 size={11} className="animate-spin shrink-0" />
+        Starting…
       </div>
     );
   }
 
-  // ── 3. Awaiting live-video consent (after both permission attempts) ───────
-  // Both permissions have been attempted. Now ask the customer whether to
-  // actually transmit video (and GPS if granted) to the administrator.
-  if (shareState === 'awaiting_consent') {
-    return (
-      <div
-        role="alertdialog"
-        aria-labelledby="cs-consent-label"
-        className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs shadow-sm"
-      >
-        <Camera size={14} className="shrink-0 text-sky-600" />
-        <span id="cs-consent-label" className="font-semibold text-sky-900">
-          Stream live video to the administrator?
-        </span>
-        <span className="hidden lg:inline text-sky-700/80 text-[11px]">
-          No recording. Stop any time.
-        </span>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <button
-            onClick={declineLiveVideo}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 transition"
-          >
-            No thanks
-          </button>
-          <button
-            onClick={startSharing}
-            className="rounded-lg bg-sky-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-sky-700 transition"
-          >
-            Start Sharing
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── 4. GPS needs_gesture — browser blocked the auto GPS request ──────────
-  // Camera was granted and GPS was auto-attempted but Chrome required a user
-  // gesture. Show "Allow location → Skip" so the customer can proceed.
-  // This appears inline in the navbar — no popup, no modal.
-  if (gpsState === 'needs_gesture' && cameraState === 'granted') {
+  // ── 3. GPS needs_gesture (browser blocked auto GPS request) ─────────────
+  if (shareState === 'gps_requesting' && gpsState === 'needs_gesture') {
     return (
       <div
         role="alert"
-        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-700 leading-none"
+        className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700 leading-none"
       >
-        <Compass size={12} className="shrink-0 text-slate-400" />
-        <span>Allow location?</span>
+        <Compass size={11} className="shrink-0 text-slate-400" />
+        <span className="hidden sm:inline">Allow location?</span>
         <button
           onClick={requestGps}
-          className="underline underline-offset-2 font-semibold text-sky-700 hover:text-sky-900 transition"
+          className="font-semibold text-sky-700 hover:text-sky-900 underline underline-offset-2 transition"
           aria-label="Allow GPS location access"
         >
           Allow
         </button>
-        <span className="text-slate-300">|</span>
+        <span className="text-slate-300 mx-0.5">|</span>
         <button
           onClick={skipGps}
-          className="text-slate-500 hover:text-slate-700 transition text-[10px]"
-          aria-label="Skip location, continue without GPS"
+          className="text-slate-500 hover:text-slate-700 transition"
+          aria-label="Skip location"
         >
           Skip
         </button>
@@ -171,37 +135,83 @@ export default function CameraShareBar() {
     );
   }
 
-  // ── 5. GPS auto-requesting (waiting for native GPS prompt) ───────────────
-  if (gpsState === 'auto_requesting') {
+  // ── 4. GPS auto-requesting (native GPS prompt open) ──────────────────────
+  if (shareState === 'gps_requesting' && (gpsState === 'auto_requesting' || gpsState === 'requesting')) {
     return (
-      <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600 leading-none">
-        <Loader2 size={12} className="animate-spin shrink-0 text-slate-400" />
-        Waiting for location…
+      <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600 leading-none">
+        <Loader2 size={11} className="animate-spin shrink-0 text-slate-400" />
+        <span className="hidden sm:inline">Waiting for location…</span>
       </div>
     );
   }
 
-  // ── 6. Browser camera prompt open ───────────────────────────────────────
-  if (cameraState === 'requesting') {
+  // ── 5. Camera requesting (native camera prompt open) ─────────────────────
+  if (shareState === 'camera_requesting' || cameraState === 'requesting') {
     return (
-      <div className="flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-medium text-sky-700 leading-none">
-        <Loader2 size={12} className="animate-spin shrink-0" />
-        Waiting for camera…
+      <div className="flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700 leading-none">
+        <Loader2 size={11} className="animate-spin shrink-0" />
+        <span className="hidden sm:inline">Waiting for camera…</span>
       </div>
     );
   }
 
-  // ── 7. Camera needs_gesture ──────────────────────────────────────────────
+  // ── 6. Camera denied ─────────────────────────────────────────────────────
+  if (cameraState === 'denied') {
+    return (
+      <div
+        role="alert"
+        className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 leading-none"
+      >
+        <CameraOff size={11} className="shrink-0" />
+        <span>Camera blocked — allow in address bar</span>
+        <button
+          onClick={dismissCameraError}
+          aria-label="Dismiss"
+          className="ml-1 font-bold hover:text-amber-900"
+        >
+          <X size={11} />
+        </button>
+      </div>
+    );
+  }
+
+  // ── 7. Camera hardware error ─────────────────────────────────────────────
+  if (cameraState === 'error' || shareState === 'error') {
+    const msg =
+      cameraError === 'unsupported' ? 'Camera not supported'
+      : cameraError === 'busy'      ? 'Camera in use — close other apps'
+      : cameraError === 'notfound'  ? 'No camera detected'
+      : cameraError === 'denied'    ? 'Camera blocked — allow in address bar'
+      :                               'Camera unavailable';
+    return (
+      <div
+        role="alert"
+        className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-800 leading-none"
+      >
+        <VideoOff size={11} className="shrink-0" />
+        <span className="hidden sm:inline">{msg}</span>
+        <button
+          onClick={dismissCameraError}
+          aria-label="Dismiss"
+          className="ml-1 text-red-500 hover:text-red-800 font-bold"
+        >
+          <X size={11} />
+        </button>
+      </div>
+    );
+  }
+
+  // ── 8. Camera needs_gesture (browser blocked auto camera trigger) ─────────
   if (cameraState === 'needs_gesture') {
     return (
       <div
         role="alert"
-        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600 leading-none"
+        className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600 leading-none"
       >
-        <CameraOff size={12} className="shrink-0 text-slate-400" />
-        <span>Camera access needed —</span>
+        <CameraOff size={11} className="shrink-0 text-slate-400" />
+        <span className="hidden sm:inline">Camera access needed —</span>
         <button
-          onClick={requestCamera}
+          onClick={allowSharing}
           className="underline underline-offset-2 font-semibold text-sky-700 hover:text-sky-900 transition"
         >
           Allow
@@ -209,80 +219,61 @@ export default function CameraShareBar() {
         <button
           onClick={dismissCameraError}
           aria-label="Dismiss"
-          className="ml-1 text-slate-400 hover:text-slate-700 transition font-bold"
+          className="ml-1 text-slate-400 hover:text-slate-700 font-bold"
         >
-          <X size={12} />
+          <X size={11} />
         </button>
       </div>
     );
   }
 
-  // ── 8. Camera denied ─────────────────────────────────────────────────────
-  if (cameraState === 'denied') {
-    return (
-      <div
-        role="alert"
-        className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 leading-none"
-      >
-        <CameraOff size={12} className="shrink-0" />
-        <span>Camera blocked — allow in address bar</span>
-        <button
-          onClick={dismissCameraError}
-          aria-label="Dismiss"
-          className="ml-1 font-bold hover:text-amber-900"
-        >
-          <X size={12} />
-        </button>
-      </div>
-    );
-  }
-
-  // ── 9. Camera hardware error ─────────────────────────────────────────────
-  if (cameraState === 'error') {
-    const msg =
-      cameraError === 'unsupported' ? 'Camera not supported'
-      : cameraError === 'busy'      ? 'Camera in use — close other apps'
-      : cameraError === 'notfound'  ? 'No camera detected'
-      :                               'Camera unavailable';
-    return (
-      <div
-        role="alert"
-        className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-medium text-red-800 leading-none"
-      >
-        <VideoOff size={12} className="shrink-0" />
-        <span>{msg}</span>
-        {(cameraError === 'busy' || cameraError === 'notfound') && (
-          <button
-            onClick={requestCamera}
-            className="underline underline-offset-2 font-semibold hover:text-red-900 ml-1"
-          >
-            Retry
-          </button>
-        )}
-        <button
-          onClick={dismissCameraError}
-          aria-label="Dismiss"
-          className="ml-1 text-red-500 hover:text-red-800 font-bold"
-        >
-          <X size={12} />
-        </button>
-      </div>
-    );
-  }
-
-  // ── 10. GPS denied while live ────────────────────────────────────────────
+  // ── 9. GPS denied notice while live ─────────────────────────────────────
   if (gpsState === 'denied' && isLive) {
     return (
       <div
         role="alert"
-        className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 leading-none"
+        className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 leading-none"
       >
-        <AlertTriangle size={12} className="shrink-0" />
+        <AlertTriangle size={11} className="shrink-0" />
         Location blocked
       </div>
     );
   }
 
-  // ── 11. Idle / stopped / no actionable state → invisible ─────────────────
+  // ── 10. UPFRONT DISCLOSURE — pending_disclosure ───────────────────────────
+  // Compact disclosure shown BEFORE requesting any permission.
+  // This is the single consent mechanism — no second Start Sharing banner.
+  // Shown on first visit AND on return visits (no suppression).
+  if (shareState === 'pending_disclosure') {
+    return (
+      <div
+        role="alertdialog"
+        aria-labelledby="cs-disclosure-label"
+        className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] shadow-sm leading-none"
+      >
+        <ShieldCheck size={12} className="shrink-0 text-sky-600" />
+        <span id="cs-disclosure-label" className="hidden lg:inline text-slate-600 font-medium">
+          Share camera &amp; location with admin?
+        </span>
+        <span className="lg:hidden text-slate-500 font-medium">CamShield</span>
+        <button
+          onClick={allowSharing}
+          className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-sky-700 transition leading-normal"
+          aria-label="Allow CamShield to share camera and location"
+        >
+          Allow
+        </button>
+        <button
+          onClick={declineSharing}
+          className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 transition leading-normal"
+          aria-label="Decline camera and location sharing"
+        >
+          Decline
+        </button>
+      </div>
+    );
+  }
+
+  // ── 11. Declined / stopped / idle → nothing shown ────────────────────────
   return null;
 }
