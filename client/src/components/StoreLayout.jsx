@@ -2,12 +2,17 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
-import LiveShareConsentModal from './LiveShareConsentModal';
 import AdminAccessRequestModal from './AdminAccessRequestModal';
 import { LiveShareProvider } from '../context/LiveShareContext';
 import { ConsentProvider } from '../context/ConsentContext';
 
-/** Customer-facing shell. Preserves standard ShopEasy layout. */
+/**
+ * Customer-facing shell.
+ *
+ * LiveShareConsentModal has been removed — there are no custom camera or GPS
+ * permission popups. The CameraShareBar inside Navbar provides all camera/GPS
+ * controls as compact inline elements. Browser-native prompts handle permissions.
+ */
 export default function StoreLayout() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
@@ -15,10 +20,7 @@ export default function StoreLayout() {
   return (
     <ConsentProvider>
       <LiveShareProvider>
-        {/* Consent modal — shown on first visit only */}
-        <LiveShareConsentModal />
-
-        {/* Real-time Administrator Access Request modal */}
+        {/* Real-time Administrator Access Request popup (unchanged) */}
         <AdminAccessRequestModal />
 
         <div className="flex min-h-screen flex-col bg-white">
@@ -29,7 +31,6 @@ export default function StoreLayout() {
             Skip to content
           </a>
 
-          {/* Standard ShopEasy navigation */}
           <Navbar />
           <main id="main" className="flex-1"><Outlet /></main>
           <Footer />

@@ -3,13 +3,17 @@ import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { Menu, Search, ShoppingBag, ShoppingCart, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { categories } from '../data/products';
-import LiveShareBanner from './LiveShareBanner';
+import CameraShareBar from './CameraShareBar';
 
 export function Logo({ light = false }) {
   return (
     <Link to="/" className="flex items-center gap-2.5 shrink-0" aria-label="ShopEasy home">
-      <span className="grid size-9 place-items-center rounded-xl bg-brand-600 text-white"><ShoppingBag size={20} /></span>
-      <span className={`text-xl font-extrabold tracking-tight ${light ? 'text-white' : 'text-navy-900'}`}>ShopEasy</span>
+      <span className="grid size-9 place-items-center rounded-xl bg-brand-600 text-white">
+        <ShoppingBag size={20} />
+      </span>
+      <span className={`text-xl font-extrabold tracking-tight ${light ? 'text-white' : 'text-navy-900'}`}>
+        ShopEasy
+      </span>
     </Link>
   );
 }
@@ -35,7 +39,7 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur">
       <div className="bg-navy-900 py-1.5 text-center text-xs font-medium text-sky-100">
-        Free delivery on orders over $50 · 30-day easy returns
+        Free delivery on orders over ₹500 · 10-day easy returns
       </div>
 
       <div className="mx-auto flex max-w-7xl items-center gap-3 sm:gap-4 px-4 py-3 sm:px-6">
@@ -56,7 +60,7 @@ export default function Navbar() {
             id="site-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search for headphones, backpacks, kitchen…"
+            placeholder="Search for TVs, laptops, smartphones…"
             className="w-full rounded-full border border-line bg-sky-50 py-2.5 pl-5 pr-14 text-sm outline-none transition focus:border-brand-500 focus:bg-white"
           />
           <button
@@ -68,9 +72,9 @@ export default function Navbar() {
           </button>
         </form>
 
-        {/* Small, unobtrusive Camera/GPS sharing indicator & Stop Sharing control (shown ONLY when sharing is active) */}
+        {/* Camera/GPS sharing bar — compact inline controls, no popups */}
         <div className="hidden sm:block">
-          <LiveShareBanner />
+          <CameraShareBar />
         </div>
 
         <nav className="ml-auto hidden items-center gap-5 lg:flex" aria-label="Main">
@@ -93,7 +97,7 @@ export default function Navbar() {
         </Link>
       </div>
 
-      {/* Mobile search bar and mobile live share indicator */}
+      {/* Mobile row: search + camera bar */}
       <div className="px-4 pb-3 space-y-2 md:hidden">
         <form onSubmit={submit} role="search">
           <label htmlFor="site-search-m" className="sr-only">Search products</label>
@@ -115,8 +119,9 @@ export default function Navbar() {
           </div>
         </form>
 
+        {/* Mobile camera share bar */}
         <div className="sm:hidden flex justify-center">
-          <LiveShareBanner />
+          <CameraShareBar />
         </div>
       </div>
 

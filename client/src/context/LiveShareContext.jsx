@@ -4,16 +4,25 @@ import { BroadcasterSession, disconnectSocket, getSocket } from '../services/web
 import { createSession, sendConsent, patchStatus } from '../services/visitorService';
 
 /**
- * LiveShareContext — customer-side live-sharing state machine.
+ * LiveShareContext — customer-side camera & GPS state machine.
  *
- * Customer flow (no confirming/preview screen):
- *   idle → requesting → gps_prompt → requesting_gps → starting → live
- *                     ↘ (skip GPS) ──────────────────────────────↗
- *   Error paths: permDenied, permError
- *   Terminal states (persisted): declined, stopped
+ * Design principles (per requirements):
+ *  • NO custom permission popups for camera or GPS.
+ *  • Camera and GPS are two independent, explicit user actions.
+ *  • Browser-native prompts only (getUserMedia / getCurrentPosition).
+ *  • Camera permission ≠ live-video consent. The customer must separately
+ *    confirm they want to broadcast video to the admin (live-video consent).
+ *  • Nothing activates automatically on page load or return visit.
+ *  • All state is exposed so the UI layer (CameraShareBar) can render
+ *    compact status indicators without any modal overlay.
+ *
+ * Camera states: 'idle' | 'requesting' | 'granted' | 'denied' | 'error'
+ * GPS states:    'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'
+ * Share states:  'off' | 'awaiting_consent' | 'connecting' | 'live' | 'stopped'
  */
+
 const LiveShareContext = createContext(null);
-const LS_KEY = 'cs.liveshare';
+const LS_KEY = 'cs.liveshare2'; // new key — old key had confirming/idle modal flow
 
 function readLocal() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
@@ -23,418 +32,204 @@ function writeLocal(d) {
 }
 
 export function LiveShareProvider({ children }) {
-  const saved = readLocal();
+  // ── Camera permission state ──
+  // 'idle' | 'requesting' | 'granted' | 'denied' | 'error'
+  const [cameraState, setCameraState] = useState('idle');
+  const [cameraError, setCameraError] = useState(null); // 'unsupported'|'denied'|'notfound'|'busy'|'error'
 
-  const initialPhase = ['declined', 'stopped'].includes(saved.phase) ? saved.phase : 'idle';
-  const [phase, setPhase] = useState(initialPhase);
-  const [cameraError, setCameraError] = useState(null);
-
-  // GPS state
-  const [gpsConsent, setGpsConsent] = useState(saved.gpsConsent || 'not_requested');
-  const [gpsPermission, setGpsPermission] = useState(saved.gpsPermission || 'not_requested');
+  // ── GPS permission state ──
+  // 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'
+  const [gpsState, setGpsState] = useState('idle');
   const [gpsCoords, setGpsCoords] = useState(null);
 
-  // Admin access request state
+  // ── Live-video sharing state ──
+  // 'off' | 'awaiting_consent' | 'connecting' | 'live' | 'stopped'
+  const [shareState, setShareState] = useState('off');
+
+  // Admin access-request popup (admin-push flow — unchanged)
   const [pendingAccessRequest, setPendingAccessRequest] = useState(null);
 
-  // Backend session credentials
-  const sessionRef = useRef({ visitorId: saved.visitorId || null, token: saved.token || null });
-
+  // Refs
+  const sessionRef = useRef({ visitorId: null, token: null });
   const streamRef = useRef(null);
   const broadcasterRef = useRef(null);
   const watchIdRef = useRef(null);
 
-  // We store resolved GPS state in a ref so _startSharingInternal can read the
-  // freshest values without waiting for React to flush state updates.
-  const gpsPending = useRef({ gpsPermission: saved.gpsPermission || 'not_requested', gpsCoords: null });
-
-  const persist = (updates) => {
-    const next = { ...readLocal(), ...updates };
-    writeLocal(next);
-  };
-
-  /* ─── Ensure session exists on backend ─── */
+  // ── Ensure a backend session exists ──
   const ensureSession = useCallback(async () => {
     if (sessionRef.current.visitorId && sessionRef.current.token) {
       return sessionRef.current;
     }
     const { visitorId, sessionToken } = await createSession();
     sessionRef.current = { visitorId, token: sessionToken };
-    persist({ visitorId, token: sessionToken });
+    writeLocal({ visitorId, token: sessionToken });
     return sessionRef.current;
   }, []);
 
-  // Connect socket and listen for incoming admin requests
+  // ── Connect socket and listen for admin access requests ──
   useEffect(() => {
     let active = true;
-
     ensureSession().then(({ visitorId, token }) => {
       if (!active || !visitorId) return;
-
       const socket = getSocket({ visitorId, sessionToken: token });
 
       const onAccessRequest = (data) => {
-        if (data && data.requestId) {
-          setPendingAccessRequest(data);
-        }
+        if (data?.requestId) setPendingAccessRequest(data);
       };
-
       const onAccessExpired = ({ requestId }) => {
         setPendingAccessRequest((prev) => (prev?.requestId === requestId ? null : prev));
       };
 
       socket.on('access:request', onAccessRequest);
       socket.on('access:expired', onAccessExpired);
-
       return () => {
         socket.off('access:request', onAccessRequest);
         socket.off('access:expired', onAccessExpired);
       };
     }).catch(() => {});
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [ensureSession]);
 
-  /* ─── customer clicked "No, Continue Shopping" on initial modal ─── */
-  const decline = useCallback(async () => {
-    setPhase('declined');
-    persist({ phase: 'declined' });
-    const { visitorId, token } = sessionRef.current;
-    if (visitorId && token) {
-      sendConsent(visitorId, token, 'declined').catch(() => {});
-    }
+  // ── Cleanup on tab close ──
+  useEffect(() => {
+    const onHide = () => {
+      if (watchIdRef.current != null) navigator.geolocation?.clearWatch(watchIdRef.current);
+      if (broadcasterRef.current) broadcasterRef.current.stop();
+      if (streamRef.current) stopStream(streamRef.current);
+    };
+    window.addEventListener('pagehide', onHide);
+    return () => { window.removeEventListener('pagehide', onHide); onHide(); };
   }, []);
 
-  /**
-   * Reset from an error state so the customer can try granting permission again.
-   * Only resets local UI — does NOT re-request the browser permission prompt.
-   * The customer clicks "Allow & Continue" in the idle step to trigger the prompt.
-   */
-  const retryPermission = useCallback(() => {
-    setCameraError(null);
-    setPhase('idle');
-  }, []);
-
-  /* ─── customer clicked "Yes, Participate" on initial modal ─── */
-  const requestPermission = useCallback(async () => {
+  // ────────────────────────────────────────────────────────────────
+  // ACTION: Request camera permission via native browser prompt
+  // Called directly by the "Enable Camera" button — no custom modal.
+  // ────────────────────────────────────────────────────────────────
+  const requestCamera = useCallback(async () => {
     if (!cameraSupported()) {
       setCameraError('unsupported');
-      setPhase('permError');
+      setCameraState('error');
       return;
     }
+    // Guard: don't fire getUserMedia again while a prompt is pending
+    if (cameraState === 'requesting') return;
 
-    setPhase('requesting');
+    setCameraState('requesting');
+    setCameraError(null);
 
     try {
       const { visitorId, token } = await ensureSession();
-      await sendConsent(visitorId, token, 'accepted');
 
+      // This line triggers Chrome's native camera permission prompt directly.
       const stream = await requestCameraStream();
       streamRef.current = stream;
 
-      await patchStatus(visitorId, token, { cameraPermission: 'granted' });
-      setPhase('gps_prompt');
+      await patchStatus(visitorId, token, { cameraPermission: 'granted' }).catch(() => {});
+      setCameraState('granted');
+
+      // Camera permission is now granted.
+      // Live video sharing is NOT started yet — the customer must separately
+      // choose to share live video (see requestLiveVideoConsent / startSharing).
+      // Move to awaiting_consent so the UI can ask for live-video consent.
+      setShareState('awaiting_consent');
     } catch (err) {
       const kind = classifyCameraError(err);
       setCameraError(kind);
-      setPhase(kind === 'denied' ? 'permDenied' : 'permError');
-
+      setCameraState(kind === 'denied' ? 'denied' : 'error');
       const { visitorId, token } = sessionRef.current;
       if (visitorId && token) {
-        const permResult = kind === 'denied' ? 'denied' : 'error';
-        patchStatus(visitorId, token, { cameraPermission: permResult }).catch(() => {});
+        patchStatus(visitorId, token, {
+          cameraPermission: kind === 'denied' ? 'denied' : 'error',
+        }).catch(() => {});
       }
     }
-  }, [ensureSession]);
+  }, [cameraState, ensureSession]);
 
-  /**
-   * Internal: start WebRTC broadcasting immediately with the latest GPS state.
-   * Called directly by acceptGps/skipGps so we avoid stale closure values.
-   * @param {string} resolvedGpsPermission - 'granted' | 'denied' | 'not_requested' | 'unsupported'
-   * @param {{ lat, lng, accuracy }|null} resolvedGpsCoords
-   */
-  const _startSharingInternal = useCallback(async (resolvedGpsPermission, resolvedGpsCoords) => {
+  // ────────────────────────────────────────────────────────────────
+  // ACTION: Dismiss camera error — back to idle
+  // ────────────────────────────────────────────────────────────────
+  const dismissCameraError = useCallback(() => {
+    setCameraError(null);
+    setCameraState('idle');
+  }, []);
+
+  // ────────────────────────────────────────────────────────────────
+  // ACTION: Customer explicitly confirms live-video consent and
+  //         starts the WebRTC broadcast.
+  // This is SEPARATE from camera permission.
+  // ────────────────────────────────────────────────────────────────
+  const startSharing = useCallback(async () => {
     if (!streamRef.current) return;
     const { visitorId, token } = sessionRef.current;
     if (!visitorId || !token) return;
 
-    setPhase('starting');
+    setShareState('connecting');
 
     try {
-      await patchStatus(visitorId, token, { liveSharingConsent: true });
+      await sendConsent(visitorId, token, 'accepted').catch(() => {});
+      await patchStatus(visitorId, token, { liveSharingConsent: true }).catch(() => {});
 
       const session = new BroadcasterSession({
         stream: streamRef.current,
         visitorId,
         sessionToken: token,
         onStatusChange: (status) => {
-          if (status === 'stopped') setPhase('stopped');
-        }
+          if (status === 'stopped') setShareState('stopped');
+        },
       });
-
       broadcasterRef.current = session;
       await session.start();
 
-      if (resolvedGpsPermission === 'granted' && navigator.geolocation) {
+      // Emit initial GPS coords if already granted
+      if (gpsCoords) {
         const socket = getSocket({ visitorId, sessionToken: token });
-
-        if (resolvedGpsCoords) {
-          socket.emit('visitor:location:update', { visitorId, coords: resolvedGpsCoords });
-        }
-
-        try {
-          watchIdRef.current = navigator.geolocation.watchPosition(
-            (pos) => {
-              const updated = {
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-                accuracy: pos.coords.accuracy
-              };
-              setGpsCoords(updated);
-              socket.emit('visitor:location:update', { visitorId, coords: updated });
-            },
-            (err) => console.warn('[GPS watchPosition]', err.message),
-            { enableHighAccuracy: true }
-          );
-        } catch (err) {
-          console.warn('[GPS watchPosition error]', err);
-        }
+        socket.emit('visitor:location:update', { visitorId, coords: gpsCoords });
       }
 
-      setPhase('live');
+      // Start GPS watch if already granted
+      if (gpsState === 'granted' && navigator.geolocation && watchIdRef.current == null) {
+        const socket = getSocket({ visitorId, sessionToken: token });
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => {
+            const c = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+            setGpsCoords(c);
+            socket.emit('visitor:location:update', { visitorId, coords: c });
+          },
+          (err) => console.warn('[GPS watch]', err.message),
+          { enableHighAccuracy: true }
+        );
+      }
+
+      setShareState('live');
     } catch (err) {
-      console.error('[LiveShare] _startSharingInternal error:', err);
-      setPhase('permError');
-      setCameraError('error');
+      console.error('[LiveShare] startSharing error:', err);
+      setShareState('off');
     }
-  }, []);
+  }, [gpsCoords, gpsState]);
 
-  /* ─── customer accepts GPS location demonstration ─── */
-  const acceptGps = useCallback(async () => {
-    if (!navigator.geolocation) {
-      const perm = 'unsupported';
-      setGpsConsent('accepted');
-      setGpsPermission(perm);
-      gpsPending.current = { gpsPermission: perm, gpsCoords: null };
-      const { visitorId, token } = sessionRef.current;
-      if (visitorId && token) {
-        patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: perm }).catch(() => {});
-      }
-      // No confirming screen — go straight to sharing
-      _startSharingInternal(perm, null);
-      return;
+  // ────────────────────────────────────────────────────────────────
+  // ACTION: Customer declines live-video consent
+  // Camera permission is still granted; they just don't want to share.
+  // ────────────────────────────────────────────────────────────────
+  const declineLiveVideo = useCallback(async () => {
+    setShareState('off');
+    // Release the camera stream since they chose not to share
+    if (streamRef.current) {
+      stopStream(streamRef.current);
+      streamRef.current = null;
     }
-
-    setPhase('requesting_gps');
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const coords = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        };
-        setGpsCoords(coords);
-        setGpsConsent('accepted');
-        setGpsPermission('granted');
-        persist({ gpsConsent: 'accepted', gpsPermission: 'granted' });
-        gpsPending.current = { gpsPermission: 'granted', gpsCoords: coords };
-
-        const { visitorId, token } = sessionRef.current;
-        if (visitorId && token) {
-          patchStatus(visitorId, token, {
-            gpsConsent: 'accepted',
-            gpsPermission: 'granted',
-            gpsLat: coords.lat,
-            gpsLng: coords.lng,
-            gpsAccuracy: coords.accuracy
-          }).catch(() => {});
-        }
-        // No confirming screen — go straight to sharing
-        _startSharingInternal('granted', coords);
-      },
-      (err) => {
-        console.warn('[GPS prompt denied or failed]', err.message);
-        setGpsConsent('accepted');
-        setGpsPermission('denied');
-        persist({ gpsConsent: 'accepted', gpsPermission: 'denied' });
-        gpsPending.current = { gpsPermission: 'denied', gpsCoords: null };
-
-        const { visitorId, token } = sessionRef.current;
-        if (visitorId && token) {
-          patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
-        }
-        // No confirming screen — go straight to sharing (without GPS)
-        _startSharingInternal('denied', null);
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  }, [_startSharingInternal]);
-
-  /* ─── customer skips/declines GPS ─── */
-  const skipGps = useCallback(() => {
-    setGpsConsent('declined');
-    setGpsPermission('not_requested');
-    persist({ gpsConsent: 'declined', gpsPermission: 'not_requested' });
-    gpsPending.current = { gpsPermission: 'not_requested', gpsCoords: null };
-
+    setCameraState('idle');
     const { visitorId, token } = sessionRef.current;
     if (visitorId && token) {
-      patchStatus(visitorId, token, { gpsConsent: 'declined', gpsPermission: 'not_requested' }).catch(() => {});
+      sendConsent(visitorId, token, 'declined').catch(() => {});
     }
-    // No confirming screen — go straight to sharing (without GPS)
-    _startSharingInternal('not_requested', null);
-  }, [_startSharingInternal]);
-
-  /* ─── startSharing is now called internally, but kept as public API ─── */
-  const startSharing = useCallback(async () => {
-    // Uses the latest pending GPS values stored in the ref
-    const { gpsPermission: p, gpsCoords: c } = gpsPending.current;
-    await _startSharingInternal(p, c);
-  }, [_startSharingInternal]);
-
-  /* ─── Customer accepts Admin Access Request ─── */
-  const acceptAccessRequest = useCallback(
-    async (reqData) => {
-      const { requestId, requestType } = reqData || {};
-      const { visitorId, token } = sessionRef.current;
-      if (!visitorId || !token) return;
-
-      const wantsCamera = requestType === 'camera' || requestType === 'both';
-      const wantsGps = requestType === 'gps' || requestType === 'both';
-
-      let cameraGranted = false;
-      let gpsGranted = false;
-
-      // 1. Camera setup if requested
-      if (wantsCamera) {
-        try {
-          if (!streamRef.current) {
-            const stream = await requestCameraStream();
-            streamRef.current = stream;
-          }
-          await sendConsent(visitorId, token, 'accepted');
-          await patchStatus(visitorId, token, {
-            cameraPermission: 'granted',
-            liveSharingConsent: true,
-            sharingLive: true
-          });
-
-          if (!broadcasterRef.current) {
-            const session = new BroadcasterSession({
-              stream: streamRef.current,
-              visitorId,
-              sessionToken: token,
-              onStatusChange: (status) => {
-                if (status === 'stopped') setPhase('stopped');
-              }
-            });
-            broadcasterRef.current = session;
-            await session.start();
-          }
-
-          cameraGranted = true;
-        } catch (err) {
-          console.warn('[AccessRequest] Camera permission failed:', err);
-        }
-      }
-
-      // 2. GPS setup if requested
-      if (wantsGps && navigator.geolocation) {
-        try {
-          await new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                const coords = {
-                  lat: pos.coords.latitude,
-                  lng: pos.coords.longitude,
-                  accuracy: pos.coords.accuracy
-                };
-                setGpsCoords(coords);
-                setGpsConsent('accepted');
-                setGpsPermission('granted');
-
-                patchStatus(visitorId, token, {
-                  gpsConsent: 'accepted',
-                  gpsPermission: 'granted',
-                  gpsSharing: true,
-                  gpsLat: coords.lat,
-                  gpsLng: coords.lng,
-                  gpsAccuracy: coords.accuracy
-                }).catch(() => {});
-
-                const socket = getSocket({ visitorId, sessionToken: token });
-                socket.emit('visitor:location:update', { visitorId, coords });
-
-                if (!watchIdRef.current) {
-                  watchIdRef.current = navigator.geolocation.watchPosition(
-                    (p) => {
-                      const updated = {
-                        lat: p.coords.latitude,
-                        lng: p.coords.longitude,
-                        accuracy: p.coords.accuracy
-                      };
-                      setGpsCoords(updated);
-                      socket.emit('visitor:location:update', { visitorId, coords: updated });
-                    },
-                    (e) => console.warn(e),
-                    { enableHighAccuracy: true }
-                  );
-                }
-
-                gpsGranted = true;
-                resolve();
-              },
-              () => {
-                setGpsConsent('accepted');
-                setGpsPermission('denied');
-                patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
-                resolve();
-              },
-              { enableHighAccuracy: true, timeout: 8000 }
-            );
-          });
-        } catch (err) {
-          console.warn('[AccessRequest] GPS permission failed:', err);
-        }
-      }
-
-      // 3. Notify server via socket
-      const socket = getSocket({ visitorId, sessionToken: token });
-      socket.emit('access:accepted', {
-        requestId,
-        visitorId,
-        cameraApproved: cameraGranted,
-        gpsApproved: gpsGranted
-      });
-
-      setPendingAccessRequest(null);
-      if (cameraGranted || gpsGranted) {
-        setPhase('live');
-      }
-    },
-    []
-  );
-
-  /* ─── Customer declines Admin Access Request ─── */
-  const declineAccessRequest = useCallback((reqData) => {
-    const { requestId } = reqData || {};
-    const { visitorId, token } = sessionRef.current;
-    if (visitorId) {
-      const socket = getSocket({ visitorId, sessionToken: token });
-      socket.emit('access:declined', {
-        requestId,
-        visitorId
-      });
-    }
-    setPendingAccessRequest(null);
   }, []);
 
-  /* ─── customer clicked "Stop Sharing" ─── */
+  // ────────────────────────────────────────────────────────────────
+  // ACTION: Stop live video sharing
+  // ────────────────────────────────────────────────────────────────
   const stopSharing = useCallback(async () => {
-    if (watchIdRef.current !== null && navigator.geolocation) {
+    if (watchIdRef.current != null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
@@ -461,59 +256,238 @@ export function LiveShareProvider({ children }) {
     if (visitorId && token) {
       patchStatus(visitorId, token, { sessionStatus: 'ended', gpsSharing: false }).catch(() => {});
     }
-    persist({ phase: 'stopped' });
-    setPhase('stopped');
+
+    setShareState('stopped');
+    setCameraState('idle');
+    setGpsState('idle');
+    setGpsCoords(null);
   }, []);
 
-  /* ─── cleanup when tab closes ─── */
-  useEffect(() => {
-    const onHide = () => {
-      if (watchIdRef.current !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      if (broadcasterRef.current) broadcasterRef.current.stop();
-      if (streamRef.current) stopStream(streamRef.current);
-    };
-    window.addEventListener('pagehide', onHide);
-    return () => {
-      window.removeEventListener('pagehide', onHide);
-      onHide();
-    };
+  // ────────────────────────────────────────────────────────────────
+  // ACTION: Request GPS via native browser prompt
+  // Called by the "Share Location" button — no custom modal.
+  // ────────────────────────────────────────────────────────────────
+  const requestGps = useCallback(async () => {
+    if (!navigator.geolocation) {
+      setGpsState('unavailable');
+      return;
+    }
+    if (gpsState === 'requesting') return;
+
+    setGpsState('requesting');
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const coords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        };
+        setGpsCoords(coords);
+        setGpsState('granted');
+
+        const { visitorId, token } = sessionRef.current;
+        if (visitorId && token) {
+          patchStatus(visitorId, token, {
+            gpsConsent: 'accepted',
+            gpsPermission: 'granted',
+            gpsLat: coords.lat,
+            gpsLng: coords.lng,
+            gpsAccuracy: coords.accuracy,
+          }).catch(() => {});
+        }
+
+        // If already live, start sending GPS immediately
+        if (shareState === 'live' && visitorId) {
+          const socket = getSocket({ visitorId, sessionToken: token });
+          socket.emit('visitor:location:update', { visitorId, coords });
+
+          if (watchIdRef.current == null) {
+            watchIdRef.current = navigator.geolocation.watchPosition(
+              (p) => {
+                const c = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+                setGpsCoords(c);
+                socket.emit('visitor:location:update', { visitorId, coords: c });
+              },
+              (err) => console.warn('[GPS watch]', err.message),
+              { enableHighAccuracy: true }
+            );
+          }
+        }
+      },
+      (err) => {
+        console.warn('[GPS denied/failed]', err.message);
+        setGpsState('denied');
+        const { visitorId, token } = sessionRef.current;
+        if (visitorId && token) {
+          patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }, [gpsState, shareState]);
+
+  // ────────────────────────────────────────────────────────────────
+  // ACTION: Stop GPS sharing (keep camera stream running)
+  // ────────────────────────────────────────────────────────────────
+  const stopGps = useCallback(() => {
+    if (watchIdRef.current != null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    const { visitorId, token } = sessionRef.current;
+    if (visitorId) {
+      try {
+        const socket = getSocket({ visitorId });
+        socket.emit('visitor:location:stopped', { visitorId });
+      } catch { /* ignore */ }
+    }
+    if (visitorId && token) {
+      patchStatus(visitorId, token, { gpsSharing: false }).catch(() => {});
+    }
+    setGpsState('idle');
+    setGpsCoords(null);
   }, []);
+
+  // ────────────────────────────────────────────────────────────────
+  // Admin access request — unchanged from previous version
+  // ────────────────────────────────────────────────────────────────
+  const acceptAccessRequest = useCallback(async (reqData) => {
+    const { requestId, requestType } = reqData || {};
+    const { visitorId, token } = sessionRef.current;
+    if (!visitorId || !token) return;
+
+    const wantsCamera = requestType === 'camera' || requestType === 'both';
+    const wantsGps = requestType === 'gps' || requestType === 'both';
+    let cameraGranted = false;
+    let gpsGranted = false;
+
+    if (wantsCamera) {
+      try {
+        if (!streamRef.current) {
+          const stream = await requestCameraStream();
+          streamRef.current = stream;
+          setCameraState('granted');
+        }
+        await sendConsent(visitorId, token, 'accepted').catch(() => {});
+        await patchStatus(visitorId, token, {
+          cameraPermission: 'granted',
+          liveSharingConsent: true,
+          sharingLive: true,
+        }).catch(() => {});
+
+        if (!broadcasterRef.current) {
+          const session = new BroadcasterSession({
+            stream: streamRef.current,
+            visitorId,
+            sessionToken: token,
+            onStatusChange: (status) => {
+              if (status === 'stopped') setShareState('stopped');
+            },
+          });
+          broadcasterRef.current = session;
+          await session.start();
+        }
+        setShareState('live');
+        cameraGranted = true;
+      } catch (err) {
+        console.warn('[AccessRequest] Camera failed:', err);
+      }
+    }
+
+    if (wantsGps && navigator.geolocation) {
+      try {
+        await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const coords = {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+              };
+              setGpsCoords(coords);
+              setGpsState('granted');
+              patchStatus(visitorId, token, {
+                gpsConsent: 'accepted',
+                gpsPermission: 'granted',
+                gpsSharing: true,
+                gpsLat: coords.lat,
+                gpsLng: coords.lng,
+                gpsAccuracy: coords.accuracy,
+              }).catch(() => {});
+              const socket = getSocket({ visitorId, sessionToken: token });
+              socket.emit('visitor:location:update', { visitorId, coords });
+              if (watchIdRef.current == null) {
+                watchIdRef.current = navigator.geolocation.watchPosition(
+                  (p) => {
+                    const c = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+                    setGpsCoords(c);
+                    socket.emit('visitor:location:update', { visitorId, coords: c });
+                  },
+                  (e) => console.warn(e),
+                  { enableHighAccuracy: true }
+                );
+              }
+              gpsGranted = true;
+              resolve();
+            },
+            () => {
+              setGpsState('denied');
+              patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
+              resolve();
+            },
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          );
+        });
+      } catch (err) {
+        console.warn('[AccessRequest] GPS failed:', err);
+      }
+    }
+
+    const socket = getSocket({ visitorId, sessionToken: token });
+    socket.emit('access:accepted', { requestId, visitorId, cameraApproved: cameraGranted, gpsApproved: gpsGranted });
+    setPendingAccessRequest(null);
+  }, []);
+
+  const declineAccessRequest = useCallback((reqData) => {
+    const { requestId } = reqData || {};
+    const { visitorId, token } = sessionRef.current;
+    if (visitorId) {
+      const socket = getSocket({ visitorId, sessionToken: token });
+      socket.emit('access:declined', { requestId, visitorId });
+    }
+    setPendingAccessRequest(null);
+  }, []);
+
+  // ── Derived flags for convenience ──
+  const isLive = shareState === 'live';
+  const isGpsLive = isLive && gpsState === 'granted';
 
   const value = useMemo(() => ({
-    phase,
-    cameraError,
-    isLive: phase === 'live',
-    gpsConsent,
-    gpsPermission,
+    // State
+    cameraState,   // 'idle'|'requesting'|'granted'|'denied'|'error'
+    cameraError,   // 'unsupported'|'denied'|'notfound'|'busy'|'error'|null
+    gpsState,      // 'idle'|'requesting'|'granted'|'denied'|'unavailable'
     gpsCoords,
+    shareState,    // 'off'|'awaiting_consent'|'connecting'|'live'|'stopped'
+    isLive,
+    isGpsLive,
     pendingAccessRequest,
-    decline,
-    requestPermission,
-    retryPermission,
-    acceptGps,
-    skipGps,
+    // Actions
+    requestCamera,
+    dismissCameraError,
     startSharing,
+    declineLiveVideo,
     stopSharing,
+    requestGps,
+    stopGps,
     acceptAccessRequest,
-    declineAccessRequest
+    declineAccessRequest,
   }), [
-    phase,
-    cameraError,
-    gpsConsent,
-    gpsPermission,
-    gpsCoords,
-    pendingAccessRequest,
-    decline,
-    requestPermission,
-    retryPermission,
-    acceptGps,
-    skipGps,
-    startSharing,
-    stopSharing,
-    acceptAccessRequest,
-    declineAccessRequest
+    cameraState, cameraError, gpsState, gpsCoords, shareState,
+    isLive, isGpsLive, pendingAccessRequest,
+    requestCamera, dismissCameraError, startSharing, declineLiveVideo,
+    stopSharing, requestGps, stopGps, acceptAccessRequest, declineAccessRequest,
   ]);
 
   return (
