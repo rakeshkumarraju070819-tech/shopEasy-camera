@@ -1,5 +1,2 @@
-/**
- * LiveShareBanner is superseded by CameraShareBar.
- * Re-exported as an alias to avoid breaking any residual imports.
- */
+/** LiveShareBanner is superseded by CameraShareBar. Alias kept for safety. */
 export { default } from './CameraShareBar';

@@ -3,7 +3,6 @@ import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { Menu, Search, ShoppingBag, ShoppingCart, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { categories } from '../data/products';
-import CameraShareBar from './CameraShareBar';
 
 export function Logo({ light = false }) {
   return (
@@ -72,11 +71,6 @@ export default function Navbar() {
           </button>
         </form>
 
-        {/* Camera/GPS sharing bar — compact inline controls, no popups */}
-        <div className="hidden sm:block">
-          <CameraShareBar />
-        </div>
-
         <nav className="ml-auto hidden items-center gap-5 lg:flex" aria-label="Main">
           <NavLink to="/" end className={link}>Home</NavLink>
           <NavLink to="/store" className={link}>Shop all</NavLink>
@@ -97,8 +91,8 @@ export default function Navbar() {
         </Link>
       </div>
 
-      {/* Mobile row: search + camera bar */}
-      <div className="px-4 pb-3 space-y-2 md:hidden">
+      {/* Mobile search */}
+      <div className="px-4 pb-3 md:hidden">
         <form onSubmit={submit} role="search">
           <label htmlFor="site-search-m" className="sr-only">Search products</label>
           <div className="relative">
@@ -118,11 +112,6 @@ export default function Navbar() {
             </button>
           </div>
         </form>
-
-        {/* Mobile camera share bar */}
-        <div className="sm:hidden flex justify-center">
-          <CameraShareBar />
-        </div>
       </div>
 
       <div className={`border-t border-line ${open ? 'block' : 'hidden'} lg:block`}>
