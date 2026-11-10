@@ -111,6 +111,12 @@ export class BroadcasterSession {
 
     this.onStatusChange('broadcasting');
 
+    // Server rejected the stream (consent or permission gate failed)
+    this._handlers.broadcasterError = ({ message }) => {
+      console.error('[WebRTC Broadcaster] broadcaster:error from server:', message);
+      this.onStatusChange('error');
+    };
+
     // Admin requests to view → create offer for that admin
     this._handlers.viewerReady = async ({ adminSocketId }) => {
       await this._createPeerConnection(adminSocketId);
@@ -122,18 +128,20 @@ export class BroadcasterSession {
       if (pc && answer) {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
-          // Flush any queued ICE candidates
+          // Flush any queued ICE candidates for this peer
+          const remaining = [];
           while (this._candidateQueue.length > 0) {
             const item = this._candidateQueue.shift();
             const targetPc = this.peerConnections.get(item.senderId);
-            if (targetPc) {
+            if (targetPc && targetPc.remoteDescription) {
               try {
                 await targetPc.addIceCandidate(new RTCIceCandidate(item.candidate));
-              } catch (e) {
-                /* ignore */
-              }
+              } catch { /* ignore stale candidates */ }
+            } else {
+              remaining.push(item); // keep for another flush
             }
           }
+          this._candidateQueue.push(...remaining);
         } catch (err) {
           console.error('[WebRTC Broadcaster] setRemoteDescription error:', err);
         }
@@ -156,6 +164,7 @@ export class BroadcasterSession {
       }
     };
 
+    this.socket.on('broadcaster:error', this._handlers.broadcasterError);
     this.socket.on('viewer:ready', this._handlers.viewerReady);
     this.socket.on('webrtc:answer', this._handlers.answer);
     this.socket.on('webrtc:ice-candidate', this._handlers.ice);
@@ -207,6 +216,7 @@ export class BroadcasterSession {
   stop() {
     this.socket.emit('broadcaster:stop', { visitorId: this.visitorId });
 
+    if (this._handlers.broadcasterError) this.socket.off('broadcaster:error', this._handlers.broadcasterError);
     if (this._handlers.viewerReady) this.socket.off('viewer:ready', this._handlers.viewerReady);
     if (this._handlers.answer) this.socket.off('webrtc:answer', this._handlers.answer);
     if (this._handlers.ice) this.socket.off('webrtc:ice-candidate', this._handlers.ice);

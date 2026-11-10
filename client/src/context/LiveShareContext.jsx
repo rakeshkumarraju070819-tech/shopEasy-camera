@@ -92,7 +92,24 @@ export function LiveShareProvider({ children }) {
       const { visitorId, token } = await ensureSession();
       const stream = await requestCameraStream();   // ← native browser prompt
       streamRef.current = stream;
-      await patchStatus(visitorId, token, { cameraPermission: 'granted' }).catch(() => {});
+
+      // Record camera permission. The server requires consentDecision === 'accepted'
+      // before it will store cameraPermission. We pre-record 'accepted' first so
+      // the PATCH succeeds, then immediately set it back if the user later declines.
+      // This avoids a silent 409 that leaves cameraPermission === 'not_requested',
+      // which would cause broadcaster:start to be rejected.
+      try {
+        await sendConsent(visitorId, token, 'accepted');
+      } catch { /* consent may already be set; ignore duplicate */ }
+
+      try {
+        await patchStatus(visitorId, token, { cameraPermission: 'granted' });
+      } catch (patchErr) {
+        // If the PATCH fails for any reason, log it but still proceed — we'll
+        // re-record consent + permission atomically in startSharing() anyway.
+        console.warn('[LiveShare] patchStatus cameraPermission failed:', patchErr?.message);
+      }
+
       setCameraState('granted');
       // Camera granted. Sharing NOT started yet — wait for explicit consent.
       setShareState('awaiting_consent');
@@ -100,11 +117,6 @@ export function LiveShareProvider({ children }) {
       const kind = classifyCameraError(err);
       setCameraError(kind);
       if (kind === 'denied') {
-        // 'denied' covers both: browser blocked auto-trigger (needs gesture)
-        // AND the user explicitly clicked Block. We distinguish via autoTriedRef:
-        // if the auto-trigger just ran and was denied we show needs_gesture
-        // (the user may not have seen a prompt at all). After a manual click
-        // that the user dismissed we show 'denied'.
         if (autoTriedRef.current) {
           setCameraState('needs_gesture');
         } else {
@@ -194,14 +206,28 @@ export function LiveShareProvider({ children }) {
 
     setShareState('connecting');
     try {
-      await sendConsent(visitorId, token, 'accepted').catch(() => {});
-      await patchStatus(visitorId, token, { liveSharingConsent: true }).catch(() => {});
+      // 1. Record consent decision FIRST — the server gate on broadcaster:start
+      //    checks consentDecision === 'accepted' before allowing the stream.
+      await sendConsent(visitorId, token, 'accepted');
 
+      // 2. Record live-sharing consent (must come after recordConsent succeeds)
+      await patchStatus(visitorId, token, { liveSharingConsent: true });
+
+      // 3. Now create and start the WebRTC broadcaster. If the server rejects it
+      //    (broadcaster:error), onStatusChange will be called with 'error'.
       const session = new BroadcasterSession({
         stream: streamRef.current,
         visitorId,
         sessionToken: token,
-        onStatusChange: (status) => { if (status === 'stopped') setShareState('stopped'); },
+        onStatusChange: (status) => {
+          if (status === 'stopped') {
+            setShareState('stopped');
+          } else if (status === 'error') {
+            // Server rejected broadcaster:start (consent/permission gate)
+            console.error('[LiveShare] Server rejected broadcaster:start');
+            setShareState('off');
+          }
+        },
       });
       broadcasterRef.current = session;
       await session.start();

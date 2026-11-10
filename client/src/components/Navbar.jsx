@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { Menu, Search, ShoppingBag, ShoppingCart, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { categories } from '../data/products';
+import CameraShareBar from './CameraShareBar';
 
 export function Logo({ light = false }) {
   return (
@@ -41,7 +42,9 @@ export default function Navbar() {
         Free delivery on orders over ₹500 · 10-day easy returns
       </div>
 
+      {/* ── Main navbar row ── */}
       <div className="mx-auto flex max-w-7xl items-center gap-3 sm:gap-4 px-4 py-3 sm:px-6">
+        {/* Mobile menu toggle */}
         <button
           className="rounded-lg p-2 text-navy-700 hover:bg-sky-50 lg:hidden"
           onClick={() => setOpen((o) => !o)}
@@ -53,6 +56,7 @@ export default function Navbar() {
 
         <Logo />
 
+        {/* Search — hidden on mobile, shown md+ */}
         <form onSubmit={submit} role="search" className="relative mx-auto hidden max-w-xl flex-1 md:block">
           <label htmlFor="site-search" className="sr-only">Search products</label>
           <input
@@ -71,12 +75,24 @@ export default function Navbar() {
           </button>
         </form>
 
+        {/*
+          Camera/GPS sharing controls — inline in navbar, beside the search bar.
+          CameraShareBar renders null when there is nothing to show (idle/stopped),
+          so it never takes up space when inactive.
+          Shown on sm+ only; mobile gets its own row below.
+        */}
+        <div className="hidden sm:block shrink-0">
+          <CameraShareBar />
+        </div>
+
+        {/* Desktop nav links */}
         <nav className="ml-auto hidden items-center gap-5 lg:flex" aria-label="Main">
           <NavLink to="/" end className={link}>Home</NavLink>
           <NavLink to="/store" className={link}>Shop all</NavLink>
           <NavLink to="/store?deals=1" className={link}>Deals</NavLink>
         </nav>
 
+        {/* Cart */}
         <Link
           to="/cart"
           className="relative ml-auto rounded-full border border-line p-2.5 text-navy-700 hover:border-brand-500 hover:text-brand-600 lg:ml-0 shrink-0"
@@ -91,8 +107,9 @@ export default function Navbar() {
         </Link>
       </div>
 
-      {/* Mobile search */}
-      <div className="px-4 pb-3 md:hidden">
+      {/* ── Mobile rows: search + camera bar ── */}
+      <div className="px-4 pb-3 space-y-2 md:hidden">
+        {/* Mobile search */}
         <form onSubmit={submit} role="search">
           <label htmlFor="site-search-m" className="sr-only">Search products</label>
           <div className="relative">
@@ -112,8 +129,14 @@ export default function Navbar() {
             </button>
           </div>
         </form>
+
+        {/* Mobile camera share bar — only shown when active (has content to show) */}
+        <div className="sm:hidden flex justify-center">
+          <CameraShareBar />
+        </div>
       </div>
 
+      {/* ── Category strip ── */}
       <div className={`border-t border-line ${open ? 'block' : 'hidden'} lg:block`}>
         <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1 sm:px-6 [scrollbar-width:none]">
           {categories.map((c) => (

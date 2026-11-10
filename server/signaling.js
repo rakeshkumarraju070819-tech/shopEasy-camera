@@ -266,17 +266,16 @@ function initSignaling(httpServer, corsOptions) {
         return;
       }
 
-      // Tell customer's broadcaster directly using their broadcaster socket ID
+      // Tell the customer's broadcaster directly via their socket ID only.
+      // Do NOT also emit to the visitor room — the broadcaster socket is already
+      // in that room, which would cause it to receive viewer:ready twice, create
+      // two RTCPeerConnections, and send two conflicting offers to the same admin.
       if (stream.broadcasterSocketId) {
         io.to(stream.broadcasterSocketId).emit('viewer:ready', {
           adminSocketId: socket.id,
           visitorId
         });
       }
-      io.to(`visitor:${visitorId}`).emit('viewer:ready', {
-        adminSocketId: socket.id,
-        visitorId
-      });
     });
 
     // WebRTC Offer from Customer Broadcaster -> Admin Viewer

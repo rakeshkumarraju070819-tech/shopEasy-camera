@@ -32,8 +32,11 @@ function validateEnv() {
 
 function createApp() {
   const app = express();
-  // Trust reverse proxy (Render load balancer, Vercel edge proxy) to read accurate client IP
-  app.set('trust proxy', process.env.TRUST_PROXY === 'false' ? false : true);
+  // Trust reverse proxy (Render load balancer, Vercel edge proxy) to read accurate client IP.
+  // TRUST_PROXY=0 or TRUST_PROXY=false → disabled; anything else (1, 'true', unset) → enabled.
+  const _tp = process.env.TRUST_PROXY;
+  const _trustProxy = (_tp === '0' || _tp === 'false' || _tp === 'no') ? false : true;
+  app.set('trust proxy', _trustProxy);
   app.use(
     helmet({
       contentSecurityPolicy: false,
@@ -50,17 +53,24 @@ function createApp() {
 
   app.get('/api/health', (req, res) => res.json({ status: 'ok', storage: store.mode() }));
   app.get('/api/webrtc/config', (req, res) => {
+    // If a Metered.ca TURN API key is configured, use it for the credentials.
+    // Otherwise fall back to the public demo server (suitable only for testing —
+    // it is rate-limited and unreliable for production traffic).
+    const turnKey = process.env.TURN_API_KEY;
+    const turnUser = process.env.TURN_USERNAME || 'openrelay';
+    const turnCredential = turnKey || process.env.TURN_CREDENTIAL || 'openrelay';
+
     res.json({
       iceServers: [
-        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:openrelay.metered.ca:80'] },
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
         {
           urls: [
             'turn:openrelay.metered.ca:80',
             'turn:openrelay.metered.ca:443',
             'turns:openrelay.metered.ca:443?transport=tcp'
           ],
-          username: 'openrelay',
-          credential: 'openrelay'
+          username: turnUser,
+          credential: turnCredential
         }
       ]
     });
