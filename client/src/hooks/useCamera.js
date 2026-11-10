@@ -27,7 +27,7 @@ export default function useCamera({ onPermission, onActive } = {}) {
     const id = ++reqRef.current;
     setStatus('requesting');
     try {
-      const stream = await requestCameraStream(streamRef.current);
+      const stream = await requestCameraStream();
       if (id !== reqRef.current) { stopStream(stream); return; }
       streamRef.current = stream;
       stream.getVideoTracks().forEach((t) =>
@@ -45,11 +45,7 @@ export default function useCamera({ onPermission, onActive } = {}) {
   }, [stop]);
 
   useEffect(() => {
-    if (status === 'active' && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-      videoRef.current.muted = true;
-      videoRef.current.play?.().catch(() => {});
-    }
+    if (status === 'active' && videoRef.current && streamRef.current) videoRef.current.srcObject = streamRef.current;
   }, [status]);
 
   useEffect(() => {

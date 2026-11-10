@@ -69,8 +69,8 @@ export default function AdminDashboard() {
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="text-xs text-ops-muted"><tr>{['Visitor', 'Consent', 'Permission', 'Status', 'Started'].map((h) => <th key={h} className="pb-3 pr-4 font-medium">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-ops-600">
-                {(recent?.data?.visitors || []).filter(Boolean).slice(0, 6).map((v, i) => (
-                  <tr key={v?.visitorId || v?._id || `v-${i}`}>
+                {recent.data.visitors.slice(0, 6).map((v) => (
+                  <tr key={v.visitorId}>
                     <td className="py-3 pr-4"><Link to={`/admin/visitors/${v.visitorId}`} className="font-opsmono text-signal-blue hover:underline">{shortId(v.visitorId)}</Link> {v.isSimulated && <SimBadge />}</td>
                     <td className="py-3 pr-4"><ConsentBadge value={v.consentDecision} /></td>
                     <td className="py-3 pr-4"><PermissionBadge value={v.cameraPermission} /></td>

@@ -5,26 +5,22 @@ import ProductImage from './ProductImage';
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../data/products';
 
-export function Stars({ rating = 0, reviews }) {
-  const safeRating = Number.isFinite(Number(rating)) ? Number(rating) : 0;
+export function Stars({ rating, reviews }) {
   return (
-    <div className="flex items-center gap-1 text-xs text-navy-500" aria-label={`Rated ${safeRating.toFixed(1)} out of 5`}>
+    <div className="flex items-center gap-1 text-xs text-navy-500" aria-label={`Rated ${rating} out of 5`}>
       <Star size={14} className="fill-deal text-deal" aria-hidden="true" />
-      <span className="font-semibold text-navy-900">{safeRating.toFixed(1)}</span>
+      <span className="font-semibold text-navy-900">{rating.toFixed(1)}</span>
       {reviews != null && <span>({reviews.toLocaleString()})</span>}
     </div>
   );
 }
 
 export default function ProductCard({ product }) {
-  if (!product) return null;
-
   const { add } = useCart();
   const [added, setAdded] = useState(false);
-  const off = (product.oldPrice && product.price) ? Math.round((1 - product.price / product.oldPrice) * 100) : 0;
+  const off = product.oldPrice ? Math.round((1 - product.price / product.oldPrice) * 100) : 0;
 
   const handleAdd = () => {
-    if (!product?.id) return;
     add(product.id);
     setAdded(true);
     setTimeout(() => setAdded(false), 1400);

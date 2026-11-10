@@ -1,17 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  requestCameraStream,
-  stopStream,
-  classifyCameraError,
-  cameraSupported,
-  isStreamActive,
-  checkBrowserPermission
-} from '../services/camera';
+import { requestCameraStream, stopStream, classifyCameraError, cameraSupported } from '../services/camera';
 import { BroadcasterSession, disconnectSocket, getSocket } from '../services/webrtc';
 import { createSession, sendConsent, patchStatus } from '../services/visitorService';
 
 /**
  * LiveShareContext — customer-side live-sharing state machine.
+ *
+ * Customer flow (no confirming/preview screen):
+ *   idle → requesting → gps_prompt → requesting_gps → starting → live
+ *                     ↘ (skip GPS) ──────────────────────────────↗
+ *   Error paths: permDenied, permError
+ *   Terminal states (persisted): declined, stopped
  */
 const LiveShareContext = createContext(null);
 const LS_KEY = 'cs.liveshare';
@@ -26,20 +25,7 @@ function writeLocal(d) {
 export function LiveShareProvider({ children }) {
   const saved = readLocal();
 
-  // Return-visit logic:
-  //  - If previously 'stopped' (was sharing before), show 'ready_to_resume' so
-  //    visitor can click "Start sharing" without auto-activating camera
-  //  - If previously 'declined':
-  //      * If declined in the current browsing session (sessionStorage), keep 'declined' so shopping isn't interrupted
-  //      * If returning on a new visit (sessionStorage empty), show consent request again ('idle')
-  //  - Otherwise start at 'idle'
-  const isDeclinedThisSession = (() => {
-    try { return sessionStorage.getItem('cs.declined_session') === 'true'; } catch { return false; }
-  })();
-
-  const initialPhase = saved.phase === 'stopped' ? 'ready_to_resume'
-    : saved.phase === 'declined' ? (isDeclinedThisSession ? 'declined' : 'idle')
-    : 'idle';
+  const initialPhase = ['declined', 'stopped'].includes(saved.phase) ? saved.phase : 'idle';
   const [phase, setPhase] = useState(initialPhase);
   const [cameraError, setCameraError] = useState(null);
 
@@ -57,6 +43,10 @@ export function LiveShareProvider({ children }) {
   const streamRef = useRef(null);
   const broadcasterRef = useRef(null);
   const watchIdRef = useRef(null);
+
+  // We store resolved GPS state in a ref so _startSharingInternal can read the
+  // freshest values without waiting for React to flush state updates.
+  const gpsPending = useRef({ gpsPermission: saved.gpsPermission || 'not_requested', gpsCoords: null });
 
   const persist = (updates) => {
     const next = { ...readLocal(), ...updates };
@@ -109,13 +99,22 @@ export function LiveShareProvider({ children }) {
 
   /* ─── customer clicked "No, Continue Shopping" on initial modal ─── */
   const decline = useCallback(async () => {
-    try { sessionStorage.setItem('cs.declined_session', 'true'); } catch { /* ignore */ }
     setPhase('declined');
-    persist({ phase: 'declined', previousConsent: 'declined' });
+    persist({ phase: 'declined' });
     const { visitorId, token } = sessionRef.current;
     if (visitorId && token) {
       sendConsent(visitorId, token, 'declined').catch(() => {});
     }
+  }, []);
+
+  /**
+   * Reset from an error state so the customer can try granting permission again.
+   * Only resets local UI — does NOT re-request the browser permission prompt.
+   * The customer clicks "Allow & Continue" in the idle step to trigger the prompt.
+   */
+  const retryPermission = useCallback(() => {
+    setCameraError(null);
+    setPhase('idle');
   }, []);
 
   /* ─── customer clicked "Yes, Participate" on initial modal ─── */
@@ -126,37 +125,18 @@ export function LiveShareProvider({ children }) {
       return;
     }
 
-    // Check Permissions API if already blocked
-    const permState = await checkBrowserPermission();
-    if (permState === 'denied') {
-      setCameraError('denied');
-      setPhase('permDenied');
-      return;
-    }
-
     setPhase('requesting');
-    setCameraError(null);
 
-    // 1. Best-effort backend session handshake
     try {
       const { visitorId, token } = await ensureSession();
       await sendConsent(visitorId, token, 'accepted');
-    } catch (netErr) {
-      console.warn('[LiveShare] Session consent sync issue:', netErr?.message);
-    }
 
-    // 2. Camera hardware acquisition
-    try {
-      const stream = await requestCameraStream(streamRef.current);
+      const stream = await requestCameraStream();
       streamRef.current = stream;
 
-      const { visitorId, token } = sessionRef.current;
-      if (visitorId && token) {
-        patchStatus(visitorId, token, { cameraPermission: 'granted' }).catch(() => {});
-      }
+      await patchStatus(visitorId, token, { cameraPermission: 'granted' });
       setPhase('gps_prompt');
     } catch (err) {
-      console.error('[LiveShare] Camera access error:', err);
       const kind = classifyCameraError(err);
       setCameraError(kind);
       setPhase(kind === 'denied' ? 'permDenied' : 'permError');
@@ -169,95 +149,14 @@ export function LiveShareProvider({ children }) {
     }
   }, [ensureSession]);
 
-  /* ─── Retry camera request after error/blocked ─── */
-  const retryPermission = useCallback(() => {
-    setCameraError(null);
-    requestPermission();
-  }, [requestPermission]);
-
-  /* ─── customer accepts GPS location demonstration ─── */
-  const acceptGps = useCallback(async () => {
-    if (!navigator.geolocation) {
-      setGpsConsent('accepted');
-      setGpsPermission('unsupported');
-      const { visitorId, token } = sessionRef.current;
-      if (visitorId && token) {
-        patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'unsupported' }).catch(() => {});
-      }
-      setPhase('confirming');
-      return;
-    }
-
-    setPhase('requesting_gps');
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const coords = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        };
-        setGpsCoords(coords);
-        setGpsConsent('accepted');
-        setGpsPermission('granted');
-        persist({ gpsConsent: 'accepted', gpsPermission: 'granted' });
-
-        const { visitorId, token } = sessionRef.current;
-        if (visitorId && token) {
-          patchStatus(visitorId, token, {
-            gpsConsent: 'accepted',
-            gpsPermission: 'granted',
-            gpsLat: coords.lat,
-            gpsLng: coords.lng,
-            gpsAccuracy: coords.accuracy
-          }).catch(() => {});
-        }
-        setPhase('confirming');
-      },
-      (err) => {
-        console.warn('[GPS prompt denied or failed]', err.message);
-        setGpsConsent('accepted');
-        setGpsPermission('denied');
-        persist({ gpsConsent: 'accepted', gpsPermission: 'denied' });
-
-        const { visitorId, token } = sessionRef.current;
-        if (visitorId && token) {
-          patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
-        }
-        setPhase('confirming');
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  }, []);
-
-  /* ─── customer skips/declines GPS ─── */
-  const skipGps = useCallback(() => {
-    setGpsConsent('declined');
-    setGpsPermission('not_requested');
-    persist({ gpsConsent: 'declined', gpsPermission: 'not_requested' });
-
-    const { visitorId, token } = sessionRef.current;
-    if (visitorId && token) {
-      patchStatus(visitorId, token, { gpsConsent: 'declined', gpsPermission: 'not_requested' }).catch(() => {});
-    }
-    setPhase('confirming');
-  }, []);
-
-  /* ─── customer confirmed "Start Live Sharing" ─── */
-  const startSharing = useCallback(async () => {
-    let stream = streamRef.current;
-    if (!isStreamActive(stream)) {
-      try {
-        stream = await requestCameraStream(stream);
-        streamRef.current = stream;
-      } catch (err) {
-        console.error('[LiveShare] Re-acquiring camera failed:', err);
-        const kind = classifyCameraError(err);
-        setCameraError(kind);
-        setPhase(kind === 'denied' ? 'permDenied' : 'permError');
-        return;
-      }
-    }
+  /**
+   * Internal: start WebRTC broadcasting immediately with the latest GPS state.
+   * Called directly by acceptGps/skipGps so we avoid stale closure values.
+   * @param {string} resolvedGpsPermission - 'granted' | 'denied' | 'not_requested' | 'unsupported'
+   * @param {{ lat, lng, accuracy }|null} resolvedGpsCoords
+   */
+  const _startSharingInternal = useCallback(async (resolvedGpsPermission, resolvedGpsCoords) => {
+    if (!streamRef.current) return;
     const { visitorId, token } = sessionRef.current;
     if (!visitorId || !token) return;
 
@@ -267,7 +166,7 @@ export function LiveShareProvider({ children }) {
       await patchStatus(visitorId, token, { liveSharingConsent: true });
 
       const session = new BroadcasterSession({
-        stream,
+        stream: streamRef.current,
         visitorId,
         sessionToken: token,
         onStatusChange: (status) => {
@@ -278,11 +177,11 @@ export function LiveShareProvider({ children }) {
       broadcasterRef.current = session;
       await session.start();
 
-      if (gpsPermission === 'granted' && navigator.geolocation) {
+      if (resolvedGpsPermission === 'granted' && navigator.geolocation) {
         const socket = getSocket({ visitorId, sessionToken: token });
 
-        if (gpsCoords) {
-          socket.emit('visitor:location:update', { visitorId, coords: gpsCoords });
+        if (resolvedGpsCoords) {
+          socket.emit('visitor:location:update', { visitorId, coords: resolvedGpsCoords });
         }
 
         try {
@@ -306,11 +205,95 @@ export function LiveShareProvider({ children }) {
 
       setPhase('live');
     } catch (err) {
-      console.error('[LiveShare] startSharing error:', err);
+      console.error('[LiveShare] _startSharingInternal error:', err);
       setPhase('permError');
       setCameraError('error');
     }
-  }, [gpsPermission, gpsCoords]);
+  }, []);
+
+  /* ─── customer accepts GPS location demonstration ─── */
+  const acceptGps = useCallback(async () => {
+    if (!navigator.geolocation) {
+      const perm = 'unsupported';
+      setGpsConsent('accepted');
+      setGpsPermission(perm);
+      gpsPending.current = { gpsPermission: perm, gpsCoords: null };
+      const { visitorId, token } = sessionRef.current;
+      if (visitorId && token) {
+        patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: perm }).catch(() => {});
+      }
+      // No confirming screen — go straight to sharing
+      _startSharingInternal(perm, null);
+      return;
+    }
+
+    setPhase('requesting_gps');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        };
+        setGpsCoords(coords);
+        setGpsConsent('accepted');
+        setGpsPermission('granted');
+        persist({ gpsConsent: 'accepted', gpsPermission: 'granted' });
+        gpsPending.current = { gpsPermission: 'granted', gpsCoords: coords };
+
+        const { visitorId, token } = sessionRef.current;
+        if (visitorId && token) {
+          patchStatus(visitorId, token, {
+            gpsConsent: 'accepted',
+            gpsPermission: 'granted',
+            gpsLat: coords.lat,
+            gpsLng: coords.lng,
+            gpsAccuracy: coords.accuracy
+          }).catch(() => {});
+        }
+        // No confirming screen — go straight to sharing
+        _startSharingInternal('granted', coords);
+      },
+      (err) => {
+        console.warn('[GPS prompt denied or failed]', err.message);
+        setGpsConsent('accepted');
+        setGpsPermission('denied');
+        persist({ gpsConsent: 'accepted', gpsPermission: 'denied' });
+        gpsPending.current = { gpsPermission: 'denied', gpsCoords: null };
+
+        const { visitorId, token } = sessionRef.current;
+        if (visitorId && token) {
+          patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
+        }
+        // No confirming screen — go straight to sharing (without GPS)
+        _startSharingInternal('denied', null);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }, [_startSharingInternal]);
+
+  /* ─── customer skips/declines GPS ─── */
+  const skipGps = useCallback(() => {
+    setGpsConsent('declined');
+    setGpsPermission('not_requested');
+    persist({ gpsConsent: 'declined', gpsPermission: 'not_requested' });
+    gpsPending.current = { gpsPermission: 'not_requested', gpsCoords: null };
+
+    const { visitorId, token } = sessionRef.current;
+    if (visitorId && token) {
+      patchStatus(visitorId, token, { gpsConsent: 'declined', gpsPermission: 'not_requested' }).catch(() => {});
+    }
+    // No confirming screen — go straight to sharing (without GPS)
+    _startSharingInternal('not_requested', null);
+  }, [_startSharingInternal]);
+
+  /* ─── startSharing is now called internally, but kept as public API ─── */
+  const startSharing = useCallback(async () => {
+    // Uses the latest pending GPS values stored in the ref
+    const { gpsPermission: p, gpsCoords: c } = gpsPending.current;
+    await _startSharingInternal(p, c);
+  }, [_startSharingInternal]);
 
   /* ─── Customer accepts Admin Access Request ─── */
   const acceptAccessRequest = useCallback(
@@ -328,8 +311,8 @@ export function LiveShareProvider({ children }) {
       // 1. Camera setup if requested
       if (wantsCamera) {
         try {
-          if (!streamRef.current || !isStreamActive(streamRef.current)) {
-            const stream = await requestCameraStream(streamRef.current);
+          if (!streamRef.current) {
+            const stream = await requestCameraStream();
             streamRef.current = stream;
           }
           await sendConsent(visitorId, token, 'accepted');
@@ -449,55 +432,6 @@ export function LiveShareProvider({ children }) {
     setPendingAccessRequest(null);
   }, []);
 
-  /* ─── Return visitor clicks "Start sharing" from ready_to_resume ─── */
-  const resumeSharing = useCallback(async () => {
-    if (!cameraSupported()) {
-      setCameraError('unsupported');
-      setPhase('permError');
-      return;
-    }
-
-    setPhase('requesting');
-    setCameraError(null);
-
-    try {
-      const { visitorId, token } = await ensureSession();
-      await sendConsent(visitorId, token, 'accepted');
-
-      const stream = await requestCameraStream(streamRef.current);
-      streamRef.current = stream;
-
-      await patchStatus(visitorId, token, { cameraPermission: 'granted', liveSharingConsent: true });
-
-      // Start broadcasting directly (skip GPS prompt for return visitors)
-      const session = new BroadcasterSession({
-        stream,
-        visitorId,
-        sessionToken: token,
-        onStatusChange: (status) => {
-          if (status === 'stopped') setPhase('stopped');
-        }
-      });
-
-      broadcasterRef.current = session;
-      await session.start();
-
-      persist({ phase: 'live' });
-      setPhase('live');
-    } catch (err) {
-      console.error('[LiveShare] resumeSharing error:', err);
-      const kind = classifyCameraError(err);
-      setCameraError(kind);
-      setPhase(kind === 'denied' ? 'permDenied' : 'permError');
-
-      const { visitorId, token } = sessionRef.current;
-      if (visitorId && token) {
-        const permResult = kind === 'denied' ? 'denied' : 'error';
-        patchStatus(visitorId, token, { cameraPermission: permResult }).catch(() => {});
-      }
-    }
-  }, [ensureSession]);
-
   /* ─── customer clicked "Stop Sharing" ─── */
   const stopSharing = useCallback(async () => {
     if (watchIdRef.current !== null && navigator.geolocation) {
@@ -550,7 +484,6 @@ export function LiveShareProvider({ children }) {
   const value = useMemo(() => ({
     phase,
     cameraError,
-    stream: streamRef.current,
     isLive: phase === 'live',
     gpsConsent,
     gpsPermission,
@@ -563,7 +496,6 @@ export function LiveShareProvider({ children }) {
     skipGps,
     startSharing,
     stopSharing,
-    resumeSharing,
     acceptAccessRequest,
     declineAccessRequest
   }), [
@@ -580,7 +512,6 @@ export function LiveShareProvider({ children }) {
     skipGps,
     startSharing,
     stopSharing,
-    resumeSharing,
     acceptAccessRequest,
     declineAccessRequest
   ]);

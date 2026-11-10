@@ -52,7 +52,7 @@ export default function App() {
             element={
               <div className="mx-auto max-w-xl px-4 py-24 text-center">
                 <h1 className="text-3xl font-extrabold">Page not found</h1>
-                <p className="mt-2 text-navy-500">The page you’re looking for doesn’t exist.</p>
+                <p className="mt-2 text-navy-500">The page you're looking for doesn't exist.</p>
                 <a href="/" className="mt-6 inline-block rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white">
                   Back to the store
                 </a>

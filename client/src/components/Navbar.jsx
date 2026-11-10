@@ -122,9 +122,9 @@ export default function Navbar() {
 
       <div className={`border-t border-line ${open ? 'block' : 'hidden'} lg:block`}>
         <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1 sm:px-6 [scrollbar-width:none]">
-          {(categories || []).filter(Boolean).map((c, i) => (
+          {categories.map((c) => (
             <Link
-              key={c?.id || `cat-${i}`}
+              key={c.id}
               to={`/store?category=${c.id}`}
               onClick={() => setOpen(false)}
               className="whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-navy-700 hover:bg-sky-100 hover:text-brand-700"

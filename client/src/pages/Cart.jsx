@@ -5,12 +5,12 @@ import ProductImage from '../components/ProductImage';
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../data/products';
 
-const FREE_SHIPPING_AT = 499;
+const FREE_SHIPPING_AT = 50;
 
 export default function Cart() {
-  const { lines = [], subtotal = 0, setQty, remove, clear } = useCart();
+  const { lines, subtotal, setQty, remove, clear } = useCart();
   const [placed, setPlaced] = useState(false);
-  const shipping = subtotal === 0 || subtotal >= FREE_SHIPPING_AT ? 0 : 49;
+  const shipping = subtotal === 0 || subtotal >= FREE_SHIPPING_AT ? 0 : 4.99;
 
   if (placed) {
     return (
@@ -39,15 +39,15 @@ export default function Cart() {
       <h1 className="text-3xl font-extrabold">Shopping cart</h1>
       <div className="mt-6 grid gap-8 lg:grid-cols-3">
         <ul className="divide-y divide-line rounded-2xl border border-line lg:col-span-2">
-          {(lines || []).filter((l) => l && l.product).map(({ product: p, qty }, idx) => (
-            <li key={p?.id || `cart-${idx}`} className="flex gap-4 p-4 sm:p-5">
+          {lines.map(({ product: p, qty }) => (
+            <li key={p.id} className="flex gap-4 p-4 sm:p-5">
               <Link to={`/product/${p.id}`} className="shrink-0"><ProductImage product={p} iconSize={36} className="size-24 rounded-xl" /></Link>
               <div className="flex flex-1 flex-col">
                 <div className="flex justify-between gap-3">
                   <Link to={`/product/${p.id}`} className="font-semibold hover:text-brand-600">{p.name}</Link>
-                  <span className="font-extrabold">{formatPrice((p.price || 0) * (qty || 1))}</span>
+                  <span className="font-extrabold">{formatPrice(p.price * qty)}</span>
                 </div>
-                <span className="text-sm text-navy-500">{formatPrice(p.price || 0)} each</span>
+                <span className="text-sm text-navy-500">{formatPrice(p.price)} each</span>
                 <div className="mt-auto flex items-center justify-between pt-3">
                   <div className="flex items-center rounded-lg border border-line" role="group" aria-label={`Quantity for ${p.name}`}>
                     <button onClick={() => setQty(p.id, qty - 1)} aria-label="Decrease quantity" className="p-2 hover:text-brand-600"><Minus size={14} /></button>

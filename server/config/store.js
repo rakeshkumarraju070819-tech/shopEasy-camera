@@ -50,8 +50,8 @@ exports.updateVisitor = async (visitorId, set, event) => {
 };
 
 exports.allVisitors = async () => {
-  if (useMongo) return (await Visitor.find().sort({ startedAt: -1 }).limit(1000).lean()).map(clean).filter(Boolean);
-  return [...mem.visitors].sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)).map(clean).filter(Boolean);
+  if (useMongo) return (await Visitor.find().sort({ startedAt: -1 }).limit(1000).lean()).map(clean);
+  return [...mem.visitors].sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)).map(clean);
 };
 
 exports.deleteVisitor = async (visitorId) => {

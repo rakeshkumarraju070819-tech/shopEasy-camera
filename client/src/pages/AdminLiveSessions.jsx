@@ -281,13 +281,13 @@ function CameraGrid({ liveStreams, token, selectedVisitorId, onSelect }) {
 
   return (
     <div className={`grid gap-4 ${gridClass}`}>
-      {(liveStreams || []).filter(Boolean).map((stream, i) => (
+      {liveStreams.map((stream) => (
         <CameraCard
-          key={stream?.visitorId || `stream-${i}`}
+          key={stream.visitorId}
           stream={stream}
           token={token}
-          isSelected={selectedVisitorId === stream?.visitorId}
-          onSelect={() => onSelect(stream?.visitorId)}
+          isSelected={selectedVisitorId === stream.visitorId}
+          onSelect={() => onSelect(stream.visitorId)}
         />
       ))}
     </div>
@@ -780,21 +780,21 @@ export default function AdminLiveSessions() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-ops-600">
-                {(sessionsData?.visitors || []).filter(Boolean).map((v, i) => {
-                  const isRowLive = liveStreams.some((s) => s?.visitorId === v?.visitorId);
-                  const isSelected = selectedVisitorId === v?.visitorId;
-                  const reqStatus = v?.visitorId ? accessRequestsMap[v.visitorId] : undefined;
+                {(sessionsData?.visitors || []).map((v) => {
+                  const isRowLive = liveStreams.some((s) => s.visitorId === v.visitorId);
+                  const isSelected = selectedVisitorId === v.visitorId;
+                  const reqStatus = accessRequestsMap[v.visitorId];
                   const isPending = reqStatus?.status === 'pending';
                   const isDeclined = reqStatus?.status === 'declined';
                   const isGranted = isRowLive || reqStatus?.status === 'accepted';
 
                   return (
                     <tr
-                      key={v?.visitorId || v?._id || `v-${i}`}
+                      key={v.visitorId}
                       className={`hover:bg-ops-700/40 transition cursor-pointer ${
                         isSelected ? 'bg-signal-blue/10 border-l-2 border-signal-blue' : ''
                       }`}
-                      onClick={() => v?.visitorId && setSelectedVisitorId(v.visitorId)}
+                      onClick={() => setSelectedVisitorId(v.visitorId)}
                     >
                       <td className="whitespace-nowrap py-2.5 pr-4">
                         <span className="font-mono text-signal-blue font-semibold text-xs">{shortId(v.visitorId)}</span>
@@ -804,22 +804,7 @@ export default function AdminLiveSessions() {
                         {v.city ? `${v.city}, ${v.country || ''}` : '–'}
                       </td>
                       <td className="py-2.5 pr-4"><ConsentBadge value={v.consentDecision} /></td>
-                      <td className="py-2.5 pr-4">
-                        {(() => {
-                          // Camera status with full state breakdown
-                          if (isRowLive) return <span className="text-emerald-400 font-medium text-xs">● Live Sharing</span>;
-                          if (v.sharingLive) return <span className="text-emerald-400 font-medium text-xs">● Sharing Active</span>;
-                          if (v.cameraPermission === 'granted' && v.consentDecision === 'accepted')
-                            return <span className="text-sky-400 font-medium text-xs">◉ Granted, Not Sharing</span>;
-                          if (v.cameraPermission === 'denied')
-                            return <span className="text-rose-400 text-xs">✕ Browser Denied</span>;
-                          if (v.consentDecision === 'declined')
-                            return <span className="text-amber-400 text-xs">○ Declined</span>;
-                          if (v.consentDecision === 'accepted' && v.cameraPermission === 'not_requested')
-                            return <span className="text-sky-300 text-xs">◌ Consented, Awaiting</span>;
-                          return <span className="text-ops-muted text-xs">— Not Requested</span>;
-                        })()}
-                      </td>
+                      <td className="py-2.5 pr-4"><PermissionBadge value={v.cameraPermission} /></td>
                       <td className="py-2.5 pr-4 text-xs">
                         {v.gpsPermission === 'granted' ? (
                           <span className="text-emerald-400 font-medium">● Shared</span>
@@ -830,10 +815,7 @@ export default function AdminLiveSessions() {
                         )}
                       </td>
                       <td className="py-2.5 pr-4">
-                        {isRowLive ? <LiveBadge label="Live" size="xs" /> :
-                          v.sessionStatus === 'ended' && v.sharingLive === false && v.cameraPermission === 'granted'
-                            ? <span className="text-xs text-ops-muted">Sharing Stopped</span>
-                            : <span className="text-xs text-ops-muted">{v.sessionStatus === 'ended' ? 'Ended' : 'Active'}</span>}
+                        {isRowLive ? <LiveBadge label="Live" size="xs" /> : <span className="text-xs text-ops-muted">Ended</span>}
                       </td>
                       <td className="whitespace-nowrap py-2.5 pr-4 text-xs text-ops-muted">{fmtDate(v.startedAt)}</td>
                       <td className="py-2.5 text-right">
