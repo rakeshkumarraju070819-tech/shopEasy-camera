@@ -1,5 +1,29 @@
-import { BookOpen, Coffee, Dumbbell, Headphones, Shirt, Sparkles } from 'lucide-react';
+import {
+  AirVent,
+  Cable,
+  Camera,
+  Headphones,
+  Laptop,
+  Refrigerator,
+  Smartphone,
+  Speaker,
+  Tv,
+  UtensilsCrossed,
+  Watch,
+  WashingMachine,
+} from 'lucide-react';
 
 export const ICONS_FOR_CATEGORIES = {
-  electronics: Headphones, fashion: Shirt, home: Coffee, sports: Dumbbell, beauty: Sparkles, books: BookOpen
+  televisions:       Tv,
+  smartphones:       Smartphone,
+  laptops:           Laptop,
+  refrigerators:     Refrigerator,
+  'washing-machines': WashingMachine,
+  'air-conditioners': AirVent,
+  headphones:        Headphones,
+  speakers:          Speaker,
+  smartwatches:      Watch,
+  cameras:           Camera,
+  kitchen:           UtensilsCrossed,
+  accessories:       Cable,
 };

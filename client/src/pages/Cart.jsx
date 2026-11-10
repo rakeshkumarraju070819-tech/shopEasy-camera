@@ -5,12 +5,12 @@ import ProductImage from '../components/ProductImage';
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../data/products';
 
-const FREE_SHIPPING_AT = 50;
+const FREE_SHIPPING_AT = 500;
 
 export default function Cart() {
   const { lines, subtotal, setQty, remove, clear } = useCart();
   const [placed, setPlaced] = useState(false);
-  const shipping = subtotal === 0 || subtotal >= FREE_SHIPPING_AT ? 0 : 4.99;
+  const shipping = subtotal === 0 || subtotal >= FREE_SHIPPING_AT ? 0 : 49;
 
   if (placed) {
     return (
@@ -68,7 +68,7 @@ export default function Cart() {
             <div className="flex justify-between"><dt>Delivery</dt><dd className="font-semibold">{shipping ? formatPrice(shipping) : 'Free'}</dd></div>
             <div className="flex justify-between border-t border-line pt-3 text-base"><dt className="font-bold">Total</dt><dd className="font-extrabold">{formatPrice(subtotal + shipping)}</dd></div>
           </dl>
-          {shipping > 0 && <p className="mt-3 text-xs text-navy-500">Add {formatPrice(FREE_SHIPPING_AT - subtotal)} more for free delivery.</p>}
+          {shipping > 0 && <p className="mt-3 text-xs text-navy-500">Add ₹{(FREE_SHIPPING_AT - subtotal).toLocaleString('en-IN')} more for free delivery.</p>}
           <button onClick={() => { clear(); setPlaced(true); }} className="mt-5 w-full rounded-xl bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700">Place demo order</button>
           <Link to="/store" className="mt-3 block text-center text-sm font-semibold text-brand-600 hover:text-brand-700">Continue shopping</Link>
         </aside>

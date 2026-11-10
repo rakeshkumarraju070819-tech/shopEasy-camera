@@ -55,8 +55,8 @@ export default function ProductDetails() {
           </div>
 
           <ul className="mt-8 space-y-3 text-sm text-navy-700">
-            <li className="flex items-center gap-3"><Truck size={18} className="text-brand-600" /> Free delivery on orders over $50</li>
-            <li className="flex items-center gap-3"><RotateCcw size={18} className="text-brand-600" /> 30-day easy returns</li>
+            <li className="flex items-center gap-3"><Truck size={18} className="text-brand-600" /> Free delivery on orders over ₹500</li>
+            <li className="flex items-center gap-3"><RotateCcw size={18} className="text-brand-600" /> 10-day easy returns</li>
           </ul>
         </div>
       </div>
