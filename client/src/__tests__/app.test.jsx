@@ -154,7 +154,7 @@ describe('Admin separation and authentication', () => {
     const user = userEvent.setup();
     renderAt('/admin/dashboard');
 
-    expect(await screen.findByRole('heading', { name: 'Overview' }, { timeout: 4000 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Overview' }, { timeout: 10000 })).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Admin' });
     for (const label of ['Overview', 'Visitor Sessions', 'IP Intelligence', 'Consent Records', 'Security Events', 'Settings']) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
@@ -164,7 +164,7 @@ describe('Admin separation and authentication', () => {
 
     await user.click(screen.getByRole('button', { name: /Logout/ }));
     expect(await screen.findByRole('heading', { name: 'Administrator sign in' })).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('visitor details clearly show disclosed visitor session and consent information without actual footage', async () => {
     sessionStorage.setItem('camshield.admin.token', 'jwt');

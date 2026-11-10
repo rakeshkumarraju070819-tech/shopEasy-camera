@@ -1,31 +1,57 @@
 import { useEffect, useRef } from 'react';
-import { Camera, Compass, Loader2, ShieldCheck, VideoOff, X, MapPin, CheckCircle2 } from 'lucide-react';
+import {
+  Camera,
+  Compass,
+  Loader2,
+  ShieldCheck,
+  VideoOff,
+  X,
+  MapPin,
+  CheckCircle2,
+  RotateCcw,
+  ShieldAlert,
+  Info
+} from 'lucide-react';
 import { useLiveShare } from '../context/LiveShareContext';
 
 /**
  * Compact, modern multi-step consent modal.
  * White card, light-blue accents, minimal layout.
- * No large illustrations. Each permission independently optional.
+ * Each permission independently optional.
  */
 export default function LiveShareConsentModal() {
   const {
     phase,
     cameraError,
+    stream,
     gpsPermission,
     decline,
     requestPermission,
+    retryPermission,
     acceptGps,
     skipGps,
-    startSharing,
-    resumeSharing
+    startSharing
   } = useLiveShare();
 
   const panelRef = useRef(null);
+  const previewVideoRef = useRef(null);
 
   const visible = [
     'idle', 'requesting', 'gps_prompt', 'requesting_gps',
     'confirming', 'starting', 'permDenied', 'permError'
   ].includes(phase);
+
+  // Attach customer self-preview stream when confirming
+  useEffect(() => {
+    const el = previewVideoRef.current;
+    if (el && stream && phase === 'confirming') {
+      el.srcObject = stream;
+      el.muted = true;
+      el.play().catch((err) => {
+        console.warn('[LiveShareModal] Preview autoplay prevented:', err);
+      });
+    }
+  }, [stream, phase]);
 
   // Trap focus
   useEffect(() => {
@@ -49,6 +75,65 @@ export default function LiveShareConsentModal() {
   }, [visible, phase]);
 
   if (!visible) return null;
+
+  // Determine error details for permDenied and permError
+  const effectiveError = phase === 'permDenied' ? 'denied' : (cameraError || 'error');
+
+  const errorConfig = {
+    denied: {
+      title: 'Camera permission blocked',
+      desc: 'Your browser has blocked camera access for this site. You can unblock it to share your camera or keep shopping normally.',
+      showChromeGuide: true,
+      canRetry: true
+    },
+    notfound: {
+      title: 'No camera detected',
+      desc: 'No camera device was detected on your device. Please ensure your camera is connected and enabled, then try again.',
+      showChromeGuide: false,
+      canRetry: true
+    },
+    busy: {
+      title: 'Camera in use',
+      desc: 'Another application or tab is currently using your camera. Please close other video apps (Zoom, Teams, Meet) and try again.',
+      showChromeGuide: false,
+      canRetry: true
+    },
+    overconstrained: {
+      title: 'Camera settings adjusted',
+      desc: 'Your camera does not support high-definition video constraints. We have adjusted to standard settings.',
+      showChromeGuide: false,
+      canRetry: true
+    },
+    security: {
+      title: 'Security restriction',
+      desc: 'Camera access is blocked by browser security restrictions. Camera sharing requires a secure HTTPS connection.',
+      showChromeGuide: false,
+      canRetry: false
+    },
+    unsupported: {
+      title: 'Camera not supported',
+      desc: 'This browser does not support WebRTC camera streaming. Please open this website in Google Chrome, Microsoft Edge, or Safari.',
+      showChromeGuide: false,
+      canRetry: false
+    },
+    network: {
+      title: 'Connection error',
+      desc: 'Could not connect to the security demonstration server. Please check your internet connection and try again.',
+      showChromeGuide: false,
+      canRetry: true
+    },
+    error: {
+      title: 'Camera temporarily unavailable',
+      desc: 'We could not access your camera. It may be restricted by system permissions, an external application, or privacy software.',
+      showChromeGuide: true,
+      canRetry: true
+    }
+  }[effectiveError] || {
+    title: 'Camera unavailable',
+    desc: 'We could not access your camera. It may be blocked or unavailable.',
+    showChromeGuide: true,
+    canRetry: true
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4 bg-black/40 backdrop-blur-[3px]">
@@ -204,7 +289,7 @@ export default function LiveShareConsentModal() {
           </div>
         )}
 
-        {/* ── Step 5: Ready to go live (confirmation) ── */}
+        {/* ── Step 5: Ready to go live (confirmation with self-preview) ── */}
         {phase === 'confirming' && (
           <>
             <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-slate-100">
@@ -215,6 +300,23 @@ export default function LiveShareConsentModal() {
             </div>
 
             <div className="px-4 py-3">
+              {/* Optional live self-preview */}
+              {stream && (
+                <div className="relative aspect-video w-full mb-3 rounded-xl overflow-hidden bg-black shadow-inner border border-slate-200">
+                  <video
+                    ref={previewVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="size-full object-cover -scale-x-100"
+                  />
+                  <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Preview Live
+                  </div>
+                </div>
+              )}
+
               <p className="text-xs text-slate-500 leading-relaxed mb-3">
                 Click <strong>Start Sharing</strong> to begin broadcasting to the authorized administrator.
                 You can stop at any time.
@@ -260,52 +362,54 @@ export default function LiveShareConsentModal() {
           </div>
         )}
 
-        {/* ── Error: Permission denied ── */}
-        {phase === 'permDenied' && (
+        {/* ── Error States: Handled accurately per error category ── */}
+        {(phase === 'permDenied' || phase === 'permError') && (
           <div className="px-4 py-5">
-            <span className="grid size-9 place-items-center rounded-xl bg-slate-100 text-slate-500 mb-3">
-              <VideoOff size={18} />
-            </span>
-            <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">Camera not enabled</h2>
-            <p className="mt-1 text-xs text-slate-500">Your browser blocked camera access. You can keep shopping normally.</p>
-            <button
-              data-autofocus
-              onClick={decline}
-              className="mt-4 w-full rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition"
-            >
-              Continue Shopping
-            </button>
-          </div>
-        )}
-
-        {/* ── Error: Camera unavailable / busy / other ── */}
-        {phase === 'permError' && (
-          <div className="px-4 py-5">
-            <span className="grid size-9 place-items-center rounded-xl bg-slate-100 text-slate-500 mb-3">
-              <VideoOff size={18} />
+            <span className="grid size-9 place-items-center rounded-xl bg-amber-50 text-amber-600 mb-3">
+              {effectiveError === 'security' ? <ShieldAlert size={18} /> : <VideoOff size={18} />}
             </span>
             <h2 id="cs-modal-title" className="text-sm font-bold text-slate-800">
-              {cameraError === 'unsupported' ? 'Camera not supported'
-                : cameraError === 'busy' ? 'Camera in use'
-                : cameraError === 'notfound' ? 'No camera found'
-                : 'Camera unavailable'}
+              {errorConfig.title}
             </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {cameraError === 'unsupported'
-                ? 'Camera sharing requires HTTPS or localhost.'
-                : cameraError === 'busy'
-                ? 'Your camera is in use by another app. Please close it and try again.'
-                : cameraError === 'notfound'
-                ? 'No webcam was detected. Connect a camera and try again.'
-                : 'We could not access your camera. It may be blocked or unavailable.'}
+            <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+              {errorConfig.desc}
             </p>
-            <button
-              data-autofocus
-              onClick={decline}
-              className="mt-4 w-full rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition"
-            >
-              Continue Shopping
-            </button>
+
+            {/* Chrome site settings unblock guide */}
+            {errorConfig.showChromeGuide && (
+              <div className="mt-3 rounded-xl bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1">
+                <p className="font-semibold text-slate-700 flex items-center gap-1">
+                  <Info size={12} className="text-sky-600 shrink-0" />
+                  How to unblock in Chrome:
+                </p>
+                <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-slate-500">
+                  <li>Tap the <strong>tune/lock icon</strong> on the address bar</li>
+                  <li>Open <strong>Permissions</strong> or <strong>Site settings</strong></li>
+                  <li>Change <strong>Camera</strong> to <strong>Allow</strong></li>
+                  <li>Click <strong>Try Again</strong> below</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={decline}
+                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Continue Shopping
+              </button>
+              {errorConfig.canRetry && (
+                <button
+                  data-autofocus
+                  onClick={retryPermission}
+                  className="flex-1 flex items-center justify-center gap-1 rounded-xl bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 transition"
+                >
+                  <RotateCcw size={12} />
+                  Try Again
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

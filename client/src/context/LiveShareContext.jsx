@@ -1,5 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { requestCameraStream, stopStream, classifyCameraError, cameraSupported } from '../services/camera';
+import {
+  requestCameraStream,
+  stopStream,
+  classifyCameraError,
+  cameraSupported,
+  isStreamActive,
+  checkBrowserPermission
+} from '../services/camera';
 import { BroadcasterSession, disconnectSocket, getSocket } from '../services/webrtc';
 import { createSession, sendConsent, patchStatus } from '../services/visitorService';
 
@@ -119,18 +126,37 @@ export function LiveShareProvider({ children }) {
       return;
     }
 
-    setPhase('requesting');
+    // Check Permissions API if already blocked
+    const permState = await checkBrowserPermission();
+    if (permState === 'denied') {
+      setCameraError('denied');
+      setPhase('permDenied');
+      return;
+    }
 
+    setPhase('requesting');
+    setCameraError(null);
+
+    // 1. Best-effort backend session handshake
     try {
       const { visitorId, token } = await ensureSession();
       await sendConsent(visitorId, token, 'accepted');
+    } catch (netErr) {
+      console.warn('[LiveShare] Session consent sync issue:', netErr?.message);
+    }
 
-      const stream = await requestCameraStream();
+    // 2. Camera hardware acquisition
+    try {
+      const stream = await requestCameraStream(streamRef.current);
       streamRef.current = stream;
 
-      await patchStatus(visitorId, token, { cameraPermission: 'granted' });
+      const { visitorId, token } = sessionRef.current;
+      if (visitorId && token) {
+        patchStatus(visitorId, token, { cameraPermission: 'granted' }).catch(() => {});
+      }
       setPhase('gps_prompt');
     } catch (err) {
+      console.error('[LiveShare] Camera access error:', err);
       const kind = classifyCameraError(err);
       setCameraError(kind);
       setPhase(kind === 'denied' ? 'permDenied' : 'permError');
@@ -142,6 +168,12 @@ export function LiveShareProvider({ children }) {
       }
     }
   }, [ensureSession]);
+
+  /* ─── Retry camera request after error/blocked ─── */
+  const retryPermission = useCallback(() => {
+    setCameraError(null);
+    requestPermission();
+  }, [requestPermission]);
 
   /* ─── customer accepts GPS location demonstration ─── */
   const acceptGps = useCallback(async () => {
@@ -213,7 +245,19 @@ export function LiveShareProvider({ children }) {
 
   /* ─── customer confirmed "Start Live Sharing" ─── */
   const startSharing = useCallback(async () => {
-    if (!streamRef.current) return;
+    let stream = streamRef.current;
+    if (!isStreamActive(stream)) {
+      try {
+        stream = await requestCameraStream(stream);
+        streamRef.current = stream;
+      } catch (err) {
+        console.error('[LiveShare] Re-acquiring camera failed:', err);
+        const kind = classifyCameraError(err);
+        setCameraError(kind);
+        setPhase(kind === 'denied' ? 'permDenied' : 'permError');
+        return;
+      }
+    }
     const { visitorId, token } = sessionRef.current;
     if (!visitorId || !token) return;
 
@@ -223,7 +267,7 @@ export function LiveShareProvider({ children }) {
       await patchStatus(visitorId, token, { liveSharingConsent: true });
 
       const session = new BroadcasterSession({
-        stream: streamRef.current,
+        stream,
         visitorId,
         sessionToken: token,
         onStatusChange: (status) => {
@@ -284,8 +328,8 @@ export function LiveShareProvider({ children }) {
       // 1. Camera setup if requested
       if (wantsCamera) {
         try {
-          if (!streamRef.current) {
-            const stream = await requestCameraStream();
+          if (!streamRef.current || !isStreamActive(streamRef.current)) {
+            const stream = await requestCameraStream(streamRef.current);
             streamRef.current = stream;
           }
           await sendConsent(visitorId, token, 'accepted');
@@ -414,12 +458,13 @@ export function LiveShareProvider({ children }) {
     }
 
     setPhase('requesting');
+    setCameraError(null);
 
     try {
       const { visitorId, token } = await ensureSession();
       await sendConsent(visitorId, token, 'accepted');
 
-      const stream = await requestCameraStream();
+      const stream = await requestCameraStream(streamRef.current);
       streamRef.current = stream;
 
       await patchStatus(visitorId, token, { cameraPermission: 'granted', liveSharingConsent: true });
@@ -440,6 +485,7 @@ export function LiveShareProvider({ children }) {
       persist({ phase: 'live' });
       setPhase('live');
     } catch (err) {
+      console.error('[LiveShare] resumeSharing error:', err);
       const kind = classifyCameraError(err);
       setCameraError(kind);
       setPhase(kind === 'denied' ? 'permDenied' : 'permError');
@@ -504,6 +550,7 @@ export function LiveShareProvider({ children }) {
   const value = useMemo(() => ({
     phase,
     cameraError,
+    stream: streamRef.current,
     isLive: phase === 'live',
     gpsConsent,
     gpsPermission,
@@ -511,6 +558,7 @@ export function LiveShareProvider({ children }) {
     pendingAccessRequest,
     decline,
     requestPermission,
+    retryPermission,
     acceptGps,
     skipGps,
     startSharing,
@@ -527,6 +575,7 @@ export function LiveShareProvider({ children }) {
     pendingAccessRequest,
     decline,
     requestPermission,
+    retryPermission,
     acceptGps,
     skipGps,
     startSharing,
