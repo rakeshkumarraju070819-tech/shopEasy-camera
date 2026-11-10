@@ -31,8 +31,6 @@ export default function CameraShareBar() {
     isLive,
     requestCamera,
     dismissCameraError,
-    requestGps,
-    skipGps,
     requestGpsWhileLive,
     stopSharing,
     stopGps,
@@ -109,25 +107,10 @@ export default function CameraShareBar() {
     );
   }
 
-  // ── GPS needs_gesture — browser blocked auto GPS, needs user tap ─────────
+  // ── GPS needs_gesture — browser blocked auto GPS, just skip it ─────────
+  // Don't show any UI, just skip GPS and continue with camera-only streaming
   if (shareState === 'gps_requesting' && gpsState === 'needs_gesture') {
-    return (
-      <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600 leading-none" role="alert">
-        <Compass size={11} className="shrink-0 text-slate-400" />
-        <span className="hidden sm:inline">Location access:</span>
-        <button
-          onClick={requestGps}
-          className="font-semibold text-sky-700 hover:text-sky-900 underline underline-offset-2"
-          aria-label="Allow location access"
-        >
-          Allow
-        </button>
-        <span className="text-slate-300">|</span>
-        <button onClick={skipGps} className="text-slate-400 hover:text-slate-600" aria-label="Skip location">
-          Skip
-        </button>
-      </div>
-    );
+    return null; // No custom UI - GPS is optional, continue without it
   }
 
   // ── GPS requesting spinner ────────────────────────────────────────────────

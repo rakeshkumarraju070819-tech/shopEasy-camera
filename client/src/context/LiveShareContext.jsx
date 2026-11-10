@@ -141,17 +141,13 @@ export function LiveShareProvider({ children }) {
       },
       (err) => {
         console.warn('[GPS]', isAuto ? 'auto' : 'manual', err.code, err.message);
-        if (isAuto && err.code === 1) {
-          // Browser blocked the auto-call silently — needs a user gesture
-          setGpsState('needs_gesture');
-          return; // onDecided NOT called — wait for requestGps() or skipGps()
-        }
+        // GPS is optional - if blocked or denied, just continue without it
         setGpsState('denied');
         const { visitorId, token } = sessionRef.current;
         if (visitorId && token) {
           patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
         }
-        onDecided?.();
+        onDecided?.(); // Continue to WebRTC even without GPS
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
@@ -183,7 +179,7 @@ export function LiveShareProvider({ children }) {
       setShareState('gps_requesting');
 
       _doRequestGps(true, () => { _startBroadcast(); });
-      // If GPS needs_gesture: waiting for requestGps() / skipGps() to call _startBroadcast
+      // GPS is optional - if blocked, it auto-skips and continues
 
     } catch (err) {
       const kind = classifyCameraError(err);
@@ -251,19 +247,6 @@ export function LiveShareProvider({ children }) {
     setCameraState('idle');
     setShareState('idle');
   }, []);
-
-  // ── ACTION: Manual GPS allow (after needs_gesture) ───────────────────────
-  const requestGps = useCallback(() => {
-    if (!navigator.geolocation) { setGpsState('unavailable'); _startBroadcast(); return; }
-    if (gpsState === 'requesting' || gpsState === 'auto_requesting') return;
-    _doRequestGps(false, () => { _startBroadcast(); });
-  }, [gpsState, _doRequestGps, _startBroadcast]);
-
-  // ── ACTION: Skip GPS ──────────────────────────────────────────────────────
-  const skipGps = useCallback(() => {
-    setGpsState('denied');
-    _startBroadcast();
-  }, [_startBroadcast]);
 
   // ── ACTION: Stop all sharing ──────────────────────────────────────────────
   const stopSharing = useCallback(() => {
@@ -437,8 +420,6 @@ export function LiveShareProvider({ children }) {
     pendingAccessRequest,
     requestCamera,       // minimal fallback: user taps "Allow camera" pill
     dismissCameraError,
-    requestGps,          // user taps "Allow location" pill (needs_gesture)
-    skipGps,             // user taps "Skip" on GPS needs_gesture
     requestGpsWhileLive, // user adds location while live
     stopSharing,
     stopGps,
@@ -448,7 +429,7 @@ export function LiveShareProvider({ children }) {
     cameraState, cameraError, gpsState, gpsCoords, shareState,
     isLive, isGpsLive, pendingAccessRequest,
     requestCamera, dismissCameraError,
-    requestGps, skipGps, requestGpsWhileLive,
+    requestGpsWhileLive,
     stopSharing, stopGps, acceptAccessRequest, declineAccessRequest,
   ]);
 
