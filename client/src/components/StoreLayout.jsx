@@ -9,9 +9,12 @@ import { ConsentProvider } from '../context/ConsentContext';
 /**
  * Customer-facing shell.
  *
- * Camera/GPS controls are rendered inline inside the Navbar (via CameraShareBar)
- * so they appear beside the search bar. The fixed bottom-left positioning has
- * been removed — the bar only takes up space when there is something to show.
+ * Camera/GPS sharing controls are compact pills in the Navbar (CameraShareBar).
+ * There are no custom permission popups, modals, or banners.
+ *
+ * A small static disclosure bar is shown so customers know what this site does
+ * before the native browser permission prompt appears. It is purely informational
+ * — it has no buttons and does not intercept browser permission flows.
  */
 export default function StoreLayout() {
   const { pathname } = useLocation();
@@ -30,6 +33,7 @@ export default function StoreLayout() {
           >
             Skip to content
           </a>
+
           <Navbar />
           <main id="main" className="flex-1"><Outlet /></main>
           <Footer />
