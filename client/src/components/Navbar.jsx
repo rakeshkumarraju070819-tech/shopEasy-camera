@@ -75,22 +75,17 @@ export default function Navbar() {
           </button>
         </form>
 
-        {/*
-          Camera/GPS sharing controls — inline in navbar, beside the search bar.
-          CameraShareBar renders null when there is nothing to show (idle/stopped),
-          so it never takes up space when inactive.
-          Shown on sm+ only; mobile gets its own row below.
-        */}
-        <div className="hidden sm:block shrink-0">
-          <CameraShareBar />
-        </div>
-
         {/* Desktop nav links */}
         <nav className="ml-auto hidden items-center gap-5 lg:flex" aria-label="Main">
           <NavLink to="/" end className={link}>Home</NavLink>
           <NavLink to="/store" className={link}>Shop all</NavLink>
           <NavLink to="/store?deals=1" className={link}>Deals</NavLink>
         </nav>
+
+        {/* Camera icon - shown beside cart */}
+        <div className="shrink-0">
+          <CameraShareBar />
+        </div>
 
         {/* Cart */}
         <Link
@@ -107,9 +102,8 @@ export default function Navbar() {
         </Link>
       </div>
 
-      {/* ── Mobile rows: search + camera bar ── */}
-      <div className="px-4 pb-3 space-y-2 md:hidden">
-        {/* Mobile search */}
+      {/* ── Mobile search row ── */}
+      <div className="px-4 pb-3 md:hidden">
         <form onSubmit={submit} role="search">
           <label htmlFor="site-search-m" className="sr-only">Search products</label>
           <div className="relative">
@@ -129,11 +123,6 @@ export default function Navbar() {
             </button>
           </div>
         </form>
-
-        {/* Mobile camera share bar — only shown when active (has content to show) */}
-        <div className="sm:hidden flex justify-center">
-          <CameraShareBar />
-        </div>
       </div>
 
       {/* ── Category strip ── */}
