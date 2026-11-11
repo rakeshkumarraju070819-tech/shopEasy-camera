@@ -82,15 +82,15 @@ export default function Navbar() {
           <NavLink to="/store?deals=1" className={link}>Deals</NavLink>
         </nav>
 
-        {/* Camera icon - shown beside cart */}
-        <div className="shrink-0">
+        {/* Camera icon - beside cart (desktop) or before cart (mobile) */}
+        <div className="ml-auto shrink-0 lg:ml-0">
           <CameraShareBar />
         </div>
 
-        {/* Cart */}
+        {/* Cart - always at the right */}
         <Link
           to="/cart"
-          className="relative ml-auto rounded-full border border-line p-2.5 text-navy-700 hover:border-brand-500 hover:text-brand-600 lg:ml-0 shrink-0"
+          className="relative rounded-full border border-line p-2.5 text-navy-700 hover:border-brand-500 hover:text-brand-600 shrink-0"
           aria-label={`Shopping cart, ${count} items`}
         >
           <ShoppingCart size={20} />
