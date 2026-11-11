@@ -66,7 +66,10 @@ export function LiveShareProvider({ children }) {
     try {
       // Send consent and update status
       await sendConsent(visitorId, token, 'accepted');
-      await patchStatus(visitorId, token, { liveSharingConsent: true });
+      await patchStatus(visitorId, token, { 
+        liveSharingConsent: true,
+        cameraActive: true
+      });
 
       // Create broadcaster session
       const session = new BroadcasterSession({
@@ -83,10 +86,13 @@ export function LiveShareProvider({ children }) {
       broadcasterRef.current = session;
       await session.start();
 
-      // Send initial GPS coords if available
+      console.log('✅ WEBRTC BROADCAST STARTED');
+      setShareState('live');
+      
+      // If GPS coords already available, send them now and start watch
       const coords = gpsCoordsRef.current;
       if (coords) {
-        console.log('📍 Sending initial GPS coords to admin');
+        console.log('📍 GPS coords available - sending to admin and starting watch');
         const socket = getSocket({ visitorId, sessionToken: token });
         socket.emit('visitor:location:update', { visitorId, coords });
         
@@ -102,16 +108,16 @@ export function LiveShareProvider({ children }) {
               };
               gpsCoordsRef.current = c;
               setGpsCoords(c);
+              console.log('📍 GPS update:', c);
               socket.emit('visitor:location:update', { visitorId, coords: c });
             },
             (err) => console.warn('⚠️ GPS watch error:', err.message),
             { enableHighAccuracy: true }
           );
         }
+      } else {
+        console.log('ℹ️  GPS not yet available - will send when obtained');
       }
-
-      console.log('✅ SHARING LIVE');
-      setShareState('live');
     } catch (err) {
       console.error('❌ Broadcast error:', err);
       setShareState('error');
@@ -133,7 +139,10 @@ export function LiveShareProvider({ children }) {
     }
     
     // GPS will be requested automatically by PermissionManager after camera
-  }, []);
+    // Don't wait for GPS - start broadcast with camera only
+    console.log('[LiveShare] Camera granted - starting broadcast immediately');
+    await startBroadcast();
+  }, [startBroadcast]);
 
   const handleCameraDenied = useCallback(async (reason) => {
     console.log('❌ Camera denied:', reason);
@@ -146,7 +155,7 @@ export function LiveShareProvider({ children }) {
         cameraPermission: 'denied'
       }).catch(() => {});
     }
-  }, []);
+  }, [startBroadcast]);
 
   const handleGpsGranted = useCallback(async (coords) => {
     console.log('✅ GPS granted:', coords);
@@ -156,6 +165,7 @@ export function LiveShareProvider({ children }) {
     
     const { visitorId, token } = sessionRef.current;
     if (visitorId && token) {
+      // Update backend with GPS coords
       await patchStatus(visitorId, token, {
         gpsConsent: 'accepted',
         gpsPermission: 'granted',
@@ -163,13 +173,47 @@ export function LiveShareProvider({ children }) {
         gpsLng: coords.lng,
         gpsAccuracy: coords.accuracy
       }).catch(err => console.warn('Failed to update GPS status:', err));
+      
+      // CRITICAL: Send GPS to admin IMMEDIATELY via Socket.IO
+      console.log('📍 SENDING GPS TO ADMIN IMMEDIATELY:', coords);
+      try {
+        const socket = getSocket({ visitorId, sessionToken: token });
+        socket.emit('visitor:location:update', { 
+          visitorId, 
+          coords: {
+            lat: coords.lat,
+            lng: coords.lng,
+            accuracy: coords.accuracy
+          }
+        });
+        console.log('✅ GPS sent to admin successfully');
+        
+        // Start GPS watch for continuous updates if broadcast is already live
+        if (shareState === 'live' && watchIdRef.current == null) {
+          console.log('👁️ Starting GPS watch for continuous updates...');
+          watchIdRef.current = navigator.geolocation.watchPosition(
+            (pos) => {
+              const c = {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                accuracy: pos.coords.accuracy
+              };
+              gpsCoordsRef.current = c;
+              setGpsCoords(c);
+              console.log('📍 GPS update:', c);
+              socket.emit('visitor:location:update', { visitorId, coords: c });
+            },
+            (err) => console.warn('⚠️ GPS watch error:', err.message),
+            { enableHighAccuracy: true }
+          );
+        }
+      } catch (err) {
+        console.error('❌ Failed to send GPS to admin:', err);
+      }
     }
     
-    // After both permissions granted, start broadcast
-    if (streamRef.current) {
-      await startBroadcast();
-    }
-  }, [startBroadcast]);
+    // Note: Camera broadcast already started - GPS just added to existing session
+  }, [shareState]);
 
   const handleGpsDenied = useCallback(async (reason) => {
     console.log('❌ GPS denied:', reason);
@@ -182,11 +226,9 @@ export function LiveShareProvider({ children }) {
       }).catch(() => {});
     }
     
-    // Start broadcast with camera only (no GPS)
-    if (streamRef.current) {
-      await startBroadcast();
-    }
-  }, [startBroadcast]);
+    // Camera broadcast continues without GPS - that's OK
+    console.log('[LiveShare] GPS denied - continuing with camera-only mode');
+  }, []);
 
   // ── Initialize automatic permissions on mount ─────────────────────────────
   useEffect(() => {

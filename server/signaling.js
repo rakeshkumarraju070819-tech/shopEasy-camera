@@ -328,7 +328,40 @@ function initSignaling(httpServer, corsOptions) {
       const updatedAt = new Date();
       const accuracyVal = typeof accuracy === 'number' ? accuracy : 10;
 
-      // Attempt reverse geocoding via Nominatim (free, no API key required)
+      console.log(`[signaling] GPS update received for ${visitorId}: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+
+      // CRITICAL: Send GPS coordinates to admin IMMEDIATELY (don't wait for geocoding)
+      io.to('admins').emit('visitor:location:update', {
+        visitorId,
+        coords: {
+          lat,
+          lng,
+          accuracy: accuracyVal,
+          updatedAt,
+          address: null // Will be updated after geocoding
+        }
+      });
+
+      // Update database with raw coordinates immediately
+      await store.updateVisitor(
+        visitorId,
+        {
+          gpsConsent: 'accepted',
+          gpsPermission: 'granted',
+          gpsSharing: true,
+          gpsLat: lat,
+          gpsLng: lng,
+          gpsAccuracy: accuracyVal,
+          gpsUpdatedAt: updatedAt
+        },
+        {
+          type: 'location',
+          message: `GPS location updated (${lat.toFixed(5)}, ${lng.toFixed(5)} ±${Math.round(accuracyVal)}m)`
+        }
+      );
+
+      // Attempt reverse geocoding via Nominatim (async, non-blocking)
+      // This happens AFTER coordinates are already sent to admin
       let gpsAddress = null;
       try {
         const ctrl = new AbortController();
@@ -351,51 +384,40 @@ function initSignaling(httpServer, corsOptions) {
               state: a.state || a.province || null,
               city: a.city || a.town || a.village || a.county || null,
               district: a.suburb || a.district || a.neighbourhood || null,
-              postalCode: a.postcode || null
+              postalCode: a.postcode || null,
+              village: a.village || a.hamlet || null,
+              locality: a.locality || null
             };
-            console.log(`[signaling] GPS reverse-geocoded: ${gpsAddress.city}, ${gpsAddress.state}, ${gpsAddress.country}`);
+            console.log(`[signaling] GPS reverse-geocoded: ${gpsAddress.city || gpsAddress.village}, ${gpsAddress.state}, ${gpsAddress.country}`);
+
+            // Update database with geocoded address
+            await store.updateVisitor(
+              visitorId,
+              {
+                gpsAddressFormatted: gpsAddress.formatted,
+                gpsCountry: gpsAddress.country,
+                gpsState: gpsAddress.state,
+                gpsCity: gpsAddress.city,
+                gpsDistrict: gpsAddress.district,
+                gpsPostalCode: gpsAddress.postalCode
+              },
+              {
+                type: 'location',
+                message: `Address resolved: ${gpsAddress.city || gpsAddress.village || 'Unknown'}, ${gpsAddress.state || ''}, ${gpsAddress.country || ''}`
+              }
+            );
+
+            // Send updated location with address to admins
+            io.to('admins').emit('visitor:location:address', {
+              visitorId,
+              address: gpsAddress
+            });
           }
         }
       } catch (err) {
         // Reverse geocoding is best-effort — never block on it
         console.warn('[signaling] Reverse geocoding failed:', err.message);
       }
-
-      await store.updateVisitor(
-        visitorId,
-        {
-          gpsConsent: 'accepted',
-          gpsPermission: 'granted',
-          gpsSharing: true,
-          gpsLat: lat,
-          gpsLng: lng,
-          gpsAccuracy: accuracyVal,
-          gpsUpdatedAt: updatedAt,
-          ...(gpsAddress ? {
-            gpsAddressFormatted: gpsAddress.formatted,
-            gpsCountry: gpsAddress.country,
-            gpsState: gpsAddress.state,
-            gpsCity: gpsAddress.city,
-            gpsDistrict: gpsAddress.district,
-            gpsPostalCode: gpsAddress.postalCode
-          } : {})
-        },
-        {
-          type: 'location',
-          message: `GPS location updated (${lat.toFixed(5)}, ${lng.toFixed(5)} ±${Math.round(accuracyVal)}m)${gpsAddress?.city ? ` — ${gpsAddress.city}, ${gpsAddress.country}` : ''}`
-        }
-      );
-
-      io.to('admins').emit('visitor:location:update', {
-        visitorId,
-        coords: {
-          lat,
-          lng,
-          accuracy: accuracyVal,
-          updatedAt,
-          address: gpsAddress
-        }
-      });
     });
 
     // GPS location stopped by customer
