@@ -67,9 +67,17 @@ export function LiveShareProvider({ children }) {
 
   // ── Internal: start WebRTC broadcast ─────────────────────────────────────
   const _startBroadcast = useCallback(async () => {
-    if (!streamRef.current) return;
+    console.log('🚀 STARTING_WEBRTC_BROADCAST');
+    
+    if (!streamRef.current) {
+      console.error('❌ No camera stream available for broadcast');
+      return;
+    }
     const { visitorId, token } = sessionRef.current;
-    if (!visitorId || !token) return;
+    if (!visitorId || !token) {
+      console.error('❌ No visitor session for broadcast');
+      return;
+    }
 
     setShareState('starting');
     try {
@@ -81,6 +89,7 @@ export function LiveShareProvider({ children }) {
         visitorId,
         sessionToken: token,
         onStatusChange: (s) => {
+          console.log('📡 Broadcast status:', s);
           if (s === 'stopped') setShareState('stopped');
           if (s === 'error')   setShareState('error');
         },
@@ -90,83 +99,134 @@ export function LiveShareProvider({ children }) {
 
       const coords = gpsCoordsRef.current;
       if (coords) {
+        console.log('📍 Sending initial GPS coords to admin:', coords);
         const socket = getSocket({ visitorId, sessionToken: token });
         socket.emit('visitor:location:update', { visitorId, coords });
+      } else {
+        console.log('ℹ️ No GPS coords available, starting camera-only broadcast');
       }
 
       if (gpsCoordsRef.current && navigator.geolocation && watchIdRef.current == null) {
+        console.log('👁️ Starting GPS watch for continuous updates...');
         const socket = getSocket({ visitorId, sessionToken: token });
         watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => {
             const c = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
             gpsCoordsRef.current = c;
             setGpsCoords(c);
+            console.log('📍 GPS update:', c);
             socket.emit('visitor:location:update', { visitorId, coords: c });
           },
-          (err) => console.warn('[GPS watch]', err.message),
+          (err) => console.warn('⚠️ GPS watch error:', err.message),
           { enableHighAccuracy: true }
         );
       }
 
+      console.log('✅ SHARING_LIVE');
       setShareState('live');
     } catch (err) {
-      console.error('[LiveShare] _startBroadcast error:', err);
+      console.error('❌ BROADCAST_ERROR:', err);
       setShareState('error');
     }
   }, []);
 
   // ── Internal: GPS attempt ─────────────────────────────────────────────────
   const _doRequestGps = useCallback((isAuto, onDecided) => {
+    console.log('🌍 GPS_REQUEST_STARTED', { isAuto, hasGeolocation: !!navigator.geolocation });
+    
     if (!navigator.geolocation) {
+      console.warn('❌ GPS_NOT_SUPPORTED');
       setGpsState('unavailable');
       onDecided?.();
       return;
     }
+    
     setGpsState(isAuto ? 'auto_requesting' : 'requesting');
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const c = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+        const c = { 
+          lat: pos.coords.latitude, 
+          lng: pos.coords.longitude, 
+          accuracy: pos.coords.accuracy,
+          timestamp: new Date(pos.timestamp).toISOString()
+        };
+        console.log('✅ GPS_PERMISSION_GRANTED', { lat: c.lat, lng: c.lng, accuracy: c.accuracy });
+        
         gpsCoordsRef.current = c;
         setGpsCoords(c);
         setGpsState('granted');
+        
         const { visitorId, token } = sessionRef.current;
         if (visitorId && token) {
           patchStatus(visitorId, token, {
-            gpsConsent: 'accepted', gpsPermission: 'granted',
-            gpsLat: c.lat, gpsLng: c.lng, gpsAccuracy: c.accuracy,
-          }).catch(() => {});
+            gpsConsent: 'accepted', 
+            gpsPermission: 'granted',
+            gpsLat: c.lat, 
+            gpsLng: c.lng, 
+            gpsAccuracy: c.accuracy,
+          }).catch((err) => console.warn('Failed to patch GPS status:', err));
         }
         onDecided?.();
       },
       (err) => {
-        console.warn('[GPS]', isAuto ? 'auto' : 'manual', err.code, err.message);
-        // GPS is optional - if blocked or denied, just continue without it
+        // GeolocationPositionError codes:
+        // 1 = PERMISSION_DENIED
+        // 2 = POSITION_UNAVAILABLE  
+        // 3 = TIMEOUT
+        console.warn('⚠️ GPS_ERROR', { 
+          code: err.code, 
+          message: err.message,
+          isAuto,
+          errorName: err.code === 1 ? 'PERMISSION_DENIED' : err.code === 2 ? 'POSITION_UNAVAILABLE' : 'TIMEOUT'
+        });
+        
+        if (err.code === 1) {
+          console.log('❌ GPS_PERMISSION_DENIED');
+        }
+        
         setGpsState('denied');
         const { visitorId, token } = sessionRef.current;
         if (visitorId && token) {
-          patchStatus(visitorId, token, { gpsConsent: 'accepted', gpsPermission: 'denied' }).catch(() => {});
+          patchStatus(visitorId, token, { 
+            gpsConsent: 'accepted', 
+            gpsPermission: 'denied' 
+          }).catch(() => {});
         }
         onDecided?.(); // Continue to WebRTC even without GPS
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   }, []);
 
   // ── Internal: full sequential flow ───────────────────────────────────────
   const _runFlow = useCallback(async () => {
+    console.log('📹 CAMERA_REQUEST_STARTED');
+    
     if (!cameraSupported()) {
-      setCameraError('unsupported'); setCameraState('error'); setShareState('error');
+      console.error('❌ CAMERA_NOT_SUPPORTED');
+      setCameraError('unsupported'); 
+      setCameraState('error'); 
+      setShareState('error');
       return;
     }
+    
     setShareState('camera_requesting');
     setCameraState('requesting');
     setCameraError(null);
 
     try {
       const { visitorId, token } = await ensureSession();
+      console.log('🎥 Requesting camera stream...');
+      
       const stream = await requestCameraStream();   // ← native Chrome prompt
       streamRef.current = stream;
+      
+      console.log('✅ CAMERA_PERMISSION_GRANTED');
+      console.log('✅ CAMERA_INITIALIZED', { 
+        tracks: stream.getTracks().length,
+        videoTrack: stream.getVideoTracks()[0]?.label 
+      });
 
       try { await sendConsent(visitorId, token, 'accepted'); } catch { /* duplicate ok */ }
       try {
@@ -177,11 +237,15 @@ export function LiveShareProvider({ children }) {
 
       setCameraState('granted');
       setShareState('gps_requesting');
+      
+      console.log('🌍 Transitioning to GPS request immediately after camera...');
 
       _doRequestGps(true, () => { _startBroadcast(); });
       // GPS is optional - if blocked, it auto-skips and continues
 
     } catch (err) {
+      console.error('❌ CAMERA_ERROR', { message: err.message, name: err.name });
+      
       const kind = classifyCameraError(err);
       setCameraError(kind);
       // If auto-tried and denied → show needs_gesture (browser may not have shown prompt)
