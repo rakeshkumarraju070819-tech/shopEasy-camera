@@ -437,6 +437,23 @@ export default function AdminLiveSessions() {
       }
     };
 
+    // Receive server-side reverse-geocoded address (faster than client-side)
+    const onLocationAddress = (data) => {
+      if (data?.visitorId === selectedVisitorId && data?.address) {
+        const addr = data.address;
+        setGeocodedAddress({
+          displayName: addr.formatted || 'Unknown location',
+          locality: addr.city || addr.village || addr.locality || 'Unknown',
+          neighbourhood: addr.district,
+          suburb: addr.district,
+          postcode: addr.postalCode,
+          state: addr.state,
+          country: addr.country,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    };
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('admin:active-streams', onActiveStreams);
@@ -448,6 +465,7 @@ export default function AdminLiveSessions() {
     socket.on('stream:stopped', handleCameraStopped);
     socket.on('visitor:camera:stopped', handleCameraStopped);
     socket.on('visitor:location:update', onLocationUpdate);
+    socket.on('visitor:location:address', onLocationAddress);
     socket.on('visitor:location:stopped', onLocationStopped);
 
     if (socket.connected) setSocketReady(true);
@@ -484,6 +502,7 @@ export default function AdminLiveSessions() {
       socket.off('stream:stopped', handleCameraStopped);
       socket.off('visitor:camera:stopped', handleCameraStopped);
       socket.off('visitor:location:update', onLocationUpdate);
+      socket.off('visitor:location:address', onLocationAddress);
       socket.off('visitor:location:stopped', onLocationStopped);
     };
   }, [token]);
@@ -644,7 +663,7 @@ export default function AdminLiveSessions() {
                   ['Device Type', <span className="flex items-center gap-1 capitalize text-ops-text"><DeviceIcon deviceType={currentStream?.deviceType || sessionDetail?.deviceType} />{sessionDetail?.deviceType || currentStream?.deviceType || '—'}</span>],
                   ['Operating System', <span className="text-ops-text">{sessionDetail?.os || currentStream?.os || '—'}</span>],
                   ['Browser', <span className="text-ops-text truncate block">{sessionDetail?.browser || currentStream?.browser || '—'}</span>],
-                  ['Stream Status', isCurrentLive ? <span className="font-semibold text-emerald-400">● Active Live</span> : <span className="text-ops-muted">Ended</span>],
+                  ['Stream Status', isCurrentLive ? <span className="font-semibold text-emerald-400">● Streaming</span> : sessionDetail?.sessionStatus === 'active' ? <span className="text-sky-400 font-medium">Active (not sharing)</span> : <span className="text-ops-muted">Ended</span>],
                   ['Started At', <span className="text-ops-muted">{sessionDetail?.startedAt ? fmtDate(sessionDetail.startedAt) : currentStream?.startedAt ? fmtDate(currentStream.startedAt) : '—'}</span>],
                 ].map(([label, val], i) => (
                   <div key={i}>
@@ -869,7 +888,11 @@ export default function AdminLiveSessions() {
                       <td className="py-2.5 pr-4"><PermissionBadge value={v.cameraPermission} /></td>
                       <td className="py-2.5 pr-4 text-xs">
                         {v.gpsPermission === 'granted' ? (
-                          <span className="text-emerald-400 font-medium">● Shared</span>
+                          v.gpsSharing ? (
+                            <span className="text-emerald-400 font-medium">● Sharing</span>
+                          ) : (
+                            <span className="text-sky-400 font-medium">Granted</span>
+                          )
                         ) : v.gpsPermission === 'denied' ? (
                           <span className="text-rose-400">Denied</span>
                         ) : (
@@ -877,7 +900,13 @@ export default function AdminLiveSessions() {
                         )}
                       </td>
                       <td className="py-2.5 pr-4">
-                        {isRowLive ? <LiveBadge label="Live" size="xs" /> : <span className="text-xs text-ops-muted">Ended</span>}
+                        {isRowLive ? (
+                          <LiveBadge label="Streaming" size="xs" />
+                        ) : v.sessionStatus === 'active' ? (
+                          <span className="text-xs text-sky-400 font-medium">Active</span>
+                        ) : (
+                          <span className="text-xs text-ops-muted">Ended</span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap py-2.5 pr-4 text-xs text-ops-muted">{fmtDate(v.startedAt)}</td>
                       <td className="py-2.5 text-right">

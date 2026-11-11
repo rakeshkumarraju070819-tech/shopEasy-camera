@@ -442,15 +442,20 @@ function initSignaling(httpServer, corsOptions) {
         io.to('admins').emit('stream:stopped', { visitorId });
         io.to('admins').emit('visitor:camera:stopped', { visitorId });
 
+        // Stop camera sharing but keep session ACTIVE — only the admin or
+        // an explicit "end session" action should mark it as ended.
         await store.updateVisitor(
           visitorId,
-          { cameraActive: false, sharingLive: false, sessionStatus: 'ended', endedAt: new Date() },
+          { cameraActive: false, sharingLive: false },
           { type: 'camera', message: 'Live camera sharing stopped by customer' }
         );
       }
     });
 
-    // Disconnect cleanup
+    // Disconnect cleanup — do NOT mark the session as "ended" on a transient
+    // socket disconnect. Only stop the active camera stream so the admin UI
+    // updates. The session stays "active" and can recover when the visitor
+    // reconnects.
     socket.on('disconnect', async () => {
       if (socket.isVisitor && socket.visitorId && activeStreams.has(socket.visitorId)) {
         activeStreams.delete(socket.visitorId);
@@ -459,8 +464,8 @@ function initSignaling(httpServer, corsOptions) {
 
         await store.updateVisitor(
           socket.visitorId,
-          { cameraActive: false, sharingLive: false, sessionStatus: 'ended', endedAt: new Date() },
-          { type: 'camera', message: 'Customer disconnected; live stream stopped' }
+          { cameraActive: false, sharingLive: false },
+          { type: 'camera', message: 'Customer socket disconnected; live stream paused (session still active)' }
         );
       }
     });

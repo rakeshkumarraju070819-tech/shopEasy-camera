@@ -224,9 +224,10 @@ export class BroadcasterSession {
     this.peerConnections.forEach((pc) => pc.close());
     this.peerConnections.clear();
 
-    if (this.stream) {
-      this.stream.getTracks().forEach((t) => t.stop());
-    }
+    // NOTE: We intentionally do NOT stop the camera tracks here.
+    // The caller (LiveShareContext) manages the MediaStream lifecycle so the
+    // user can restart sharing without re-requesting browser permission.
+    // Camera tracks are stopped only on full cleanup (unmount / pagehide).
 
     this.onStatusChange('stopped');
   }

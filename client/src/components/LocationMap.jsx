@@ -12,8 +12,8 @@ export default function LocationMap({ points = [], height = 320 }) {
   useEffect(() => {
     if (!el.current || map.current) return undefined;
     map.current = L.map(el.current, { scrollWheelZoom: false, worldCopyJump: true }).setView([20, 10], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 18
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
     }).addTo(map.current);
     layer.current = L.layerGroup().addTo(map.current);
     return () => { map.current.remove(); map.current = null; };

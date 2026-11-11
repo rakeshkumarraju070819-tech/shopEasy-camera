@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { createSession, endSessionKeepalive, patchStatus, sendConsent } from '../services/visitorService';
+import { createSession, patchStatus, sendConsent } from '../services/visitorService';
 
 /**
  * Tracks the visitor's answer to the optional camera-demo notification.
@@ -18,6 +18,8 @@ export function ConsentProvider({ children }) {
   const ref = useRef(state);
   ref.current = state;
 
+  const sessionPromiseRef = useRef(null);
+
   const persist = useCallback((next) => {
     ref.current = next;
     setState(next);
@@ -25,12 +27,20 @@ export function ConsentProvider({ children }) {
     return next;
   }, []);
 
-  // Make sure a session exists (created only after the visitor has seen the disclosure and chosen).
+  // Make sure a session exists. Uses a promise cache so concurrent callers
+  // (ConsentProvider's own effect AND LiveShareProvider) never create two
+  // separate sessions.
   const ensureSession = useCallback(async () => {
     const cur = ref.current;
     if (cur.visitorId && cur.token) return cur;
-    const { visitorId, sessionToken } = await createSession();
-    return persist({ ...ref.current, visitorId, token: sessionToken });
+    if (sessionPromiseRef.current) return sessionPromiseRef.current;
+
+    sessionPromiseRef.current = (async () => {
+      const { visitorId, sessionToken } = await createSession();
+      return persist({ ...ref.current, visitorId, token: sessionToken });
+    })();
+
+    return sessionPromiseRef.current;
   }, [persist]);
 
   const choose = useCallback(async (decision) => {
@@ -59,7 +69,8 @@ export function ConsentProvider({ children }) {
   }, []);
 
   // Create session immediately on first visit, then resume on subsequent loads.
-  // Mark session ended when the tab closes.
+  // Do NOT mark the session as "ended" on pagehide — only stop active sharing.
+  // The session stays "active" so it can recover when the visitor returns.
   useEffect(() => {
     const init = async () => {
       const { visitorId, token } = ref.current;
@@ -69,8 +80,7 @@ export function ConsentProvider({ children }) {
       } else {
         // New visitor - create session immediately
         try {
-          const { visitorId: newId, sessionToken } = await createSession();
-          persist({ ...ref.current, visitorId: newId, token: sessionToken });
+          await ensureSession();
         } catch (err) {
           console.warn('[CamShield] Could not create visitor session:', err.message);
         }
@@ -78,10 +88,22 @@ export function ConsentProvider({ children }) {
     };
     init();
 
-    const onHide = () => { const s = ref.current; if (s.visitorId) endSessionKeepalive(s.visitorId, s.token); };
+    // On pagehide, stop active sharing but do NOT mark the session as ended.
+    // The session remains "active" in the database for recovery.
+    const onHide = () => {
+      const s = ref.current;
+      if (s.visitorId && s.token) {
+        // Best-effort: stop camera/GPS sharing but keep session active
+        patchStatus(s.visitorId, s.token, {
+          cameraActive: false,
+          sharingLive: false,
+          gpsSharing: false
+        }).catch(() => {});
+      }
+    };
     window.addEventListener('pagehide', onHide);
     return () => window.removeEventListener('pagehide', onHide);
-  }, [persist]);
+  }, [persist, ensureSession]);
 
   // needsChoice is intentionally false — the live-sharing consent flow is
   // now handled entirely by LiveShareContext / LiveShareConsentModal.
