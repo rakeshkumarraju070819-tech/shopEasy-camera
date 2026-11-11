@@ -3,26 +3,62 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
 import AdminAccessRequestModal from './AdminAccessRequestModal';
+import PermissionDisclosure from './PermissionDisclosure';
 import { LiveShareProvider } from '../context/LiveShareContext';
 import { ConsentProvider } from '../context/ConsentContext';
+import { permissionManager } from '../services/permissionManager';
 
 /**
- * Customer-facing shell.
+ * Customer-facing shell with automatic permission retry on interactions.
  *
- * Camera/GPS sharing controls are compact pills in the Navbar (CameraShareBar).
- * There are no custom permission popups, modals, or banners.
+ * NEW BEHAVIOR:
+ * - On first visit: automatically attempt camera + GPS permissions
+ * - On any customer click/tap: retry permissions if still in 'prompt' state
+ * - If denied: show browser settings instruction, don't retry automatically
  *
- * A small static disclosure bar is shown so customers know what this site does
- * before the native browser permission prompt appears. It is purely informational
- * — it has no buttons and does not intercept browser permission flows.
+ * Camera/GPS sharing controls are compact pills in the Navbar.
+ * No custom permission popups or modals.
  */
 export default function StoreLayout() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
 
+  // Centralized permission retry handler
+  // Triggers on any click within the storefront
+  useEffect(() => {
+    const handleClick = async (e) => {
+      // Only handle clicks on interactive elements
+      const target = e.target;
+      const isInteractive = 
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('a') ||
+        target.onclick !== null ||
+        target.style.cursor === 'pointer' ||
+        target.closest('[role="button"]');
+      
+      if (isInteractive) {
+        // Don't prevent default - let the interaction work normally
+        // Just check if we need to retry permissions
+        await permissionManager.handleUserInteraction();
+      }
+    };
+
+    // Add listener to main content area (not navbar/footer)
+    const mainElement = document.getElementById('main');
+    if (mainElement) {
+      mainElement.addEventListener('click', handleClick, { passive: true });
+      return () => mainElement.removeEventListener('click', handleClick);
+    }
+  }, []);
+
   return (
     <ConsentProvider>
       <LiveShareProvider>
+        {/* Informational disclosure about CamShield */}
+        <PermissionDisclosure />
+        
         {/* Admin-push access request popup (unchanged) */}
         <AdminAccessRequestModal />
 
