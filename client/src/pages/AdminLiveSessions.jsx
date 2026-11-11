@@ -28,13 +28,13 @@ import { PageHeader, Panel, ErrorNote } from '../components/StatCard';
 import { ConsentBadge, PermissionBadge, SimBadge, fmtDate, shortId } from '../components/Badges';
 import LiveLocationMap from '../components/LiveLocationMap';
 import { getSocket, AdminViewerSession } from '../services/webrtc';
-import {
-  getVisitors,
+import { getVisitors,
   getLiveStreams,
   getLiveSession,
   getVisitorLocation,
   getAccessRequests
 } from '../services/adminService';
+import { reverseGeocode, formatAddress } from '../services/geocoding';
 import { useAuth } from '../context/AuthContext';
 import useFetch from '../hooks/useFetch';
 
@@ -302,6 +302,7 @@ export default function AdminLiveSessions() {
   const [accessRequestsMap, setAccessRequestsMap] = useState({});
   const [sessionDetail, setSessionDetail] = useState(null);
   const [locationDetail, setLocationDetail] = useState(null);
+  const [geocodedAddress, setGeocodedAddress] = useState(null); // OpenStreetMap address
   const [socketReady, setSocketReady] = useState(false);
   const socketRef = useRef(null);
 
@@ -486,6 +487,45 @@ export default function AdminLiveSessions() {
       socket.off('visitor:location:stopped', onLocationStopped);
     };
   }, [token]);
+
+  // Reverse geocode GPS coordinates when they change
+  useEffect(() => {
+    const coords = locationDetail?.gpsLocation || sessionDetail;
+    
+    // Only geocode if we have valid GPS coordinates and permission is granted
+    if (
+      coords?.permission === 'granted' && 
+      Number.isFinite(Number(coords.lat)) && 
+      Number.isFinite(Number(coords.lng))
+    ) {
+      const lat = Number(coords.lat);
+      const lng = Number(coords.lng);
+      
+      console.log('[AdminLiveSessions] Triggering reverse geocoding for:', { lat, lng });
+      
+      // Geocode the coordinates
+      reverseGeocode(lat, lng)
+        .then((address) => {
+          console.log('[AdminLiveSessions] Geocoded address:', address);
+          setGeocodedAddress(address);
+        })
+        .catch((err) => {
+          console.error('[AdminLiveSessions] Geocoding failed:', err);
+          setGeocodedAddress(null);
+        });
+    } else {
+      // Clear address if GPS is not available
+      setGeocodedAddress(null);
+    }
+  }, [
+    locationDetail?.gpsLocation?.lat,
+    locationDetail?.gpsLocation?.lng,
+    sessionDetail?.gpsLat,
+    sessionDetail?.gpsLng,
+    locationDetail?.gpsLocation?.permission,
+    sessionDetail?.gpsPermission,
+  ]);
+
 
   const currentStream = liveStreams.find((s) => s.visitorId === selectedVisitorId);
   const isCurrentLive = Boolean(currentStream);
@@ -676,25 +716,47 @@ export default function AdminLiveSessions() {
                 </h4>
 
                 {gpsData?.permission === 'granted' && Number.isFinite(Number(gpsData?.lat)) ? (
-                  <div className="rounded-xl bg-emerald-950/20 border border-emerald-500/30 p-3 text-xs">
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                      {[
-                        ['GPS Latitude', <span className="font-mono text-emerald-300 font-semibold">{Number(gpsData.lat).toFixed(6)}°</span>],
-                        ['GPS Longitude', <span className="font-mono text-emerald-300 font-semibold">{Number(gpsData.lng).toFixed(6)}°</span>],
-                        ['Accuracy', <span className="font-mono text-emerald-300">±{Math.round(Number(gpsData.accuracy) || 0)}m</span>],
-                        ['Last Updated', <span className="text-emerald-300 text-[10px]">{gpsData.updatedAt ? new Date(gpsData.updatedAt).toLocaleTimeString() : 'Just now'}</span>],
-                      ].map(([label, val], i) => (
-                        <div key={i}>
-                          <span className="text-emerald-400/70 block">{label}</span>
-                          {val}
+                  <div className="space-y-3">
+                    {/* Address Section */}
+                    {geocodedAddress && !geocodedAddress.error && (
+                      <div className="rounded-xl bg-gradient-to-br from-emerald-950/40 to-emerald-900/20 border border-emerald-500/40 p-3.5">
+                        <div className="flex items-start gap-2.5 mb-2">
+                          <MapPin size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                          <div className="flex-1">
+                            <h5 className="text-sm font-bold text-emerald-300 mb-1">{geocodedAddress.locality}</h5>
+                            <p className="text-xs text-emerald-300/80 leading-relaxed">
+                              {formatAddress(geocodedAddress)}
+                            </p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                    <div className="pt-2 mt-2 border-t border-emerald-500/20 flex items-center justify-between text-[10px]">
-                      <span className="text-emerald-400/70">GPS Status:</span>
-                      <span className={`font-semibold ${gpsData?.sharing ? 'text-emerald-300' : 'text-ops-muted'}`}>
-                        {gpsData?.sharing ? '● Active Live Sharing' : '○ Sharing Paused'}
-                      </span>
+                        <div className="pt-2 mt-2 border-t border-emerald-500/20 flex items-center justify-between text-[10px]">
+                          <span className="text-emerald-400/70">Address via OpenStreetMap</span>
+                          <span className="text-emerald-400/50">{new Date(geocodedAddress.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Coordinates Section */}
+                    <div className="rounded-xl bg-emerald-950/20 border border-emerald-500/30 p-3 text-xs">
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                        {[
+                          ['GPS Latitude', <span className="font-mono text-emerald-300 font-semibold">{Number(gpsData.lat).toFixed(6)}°</span>],
+                          ['GPS Longitude', <span className="font-mono text-emerald-300 font-semibold">{Number(gpsData.lng).toFixed(6)}°</span>],
+                          ['Accuracy', <span className="font-mono text-emerald-300">±{Math.round(Number(gpsData.accuracy) || 0)}m</span>],
+                          ['Last Updated', <span className="text-emerald-300 text-[10px]">{gpsData.updatedAt ? new Date(gpsData.updatedAt).toLocaleTimeString() : 'Just now'}</span>],
+                        ].map(([label, val], i) => (
+                          <div key={i}>
+                            <span className="text-emerald-400/70 block">{label}</span>
+                            {val}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="pt-2 mt-2 border-t border-emerald-500/20 flex items-center justify-between text-[10px]">
+                        <span className="text-emerald-400/70">GPS Status:</span>
+                        <span className={`font-semibold ${gpsData?.sharing ? 'text-emerald-300' : 'text-ops-muted'}`}>
+                          {gpsData?.sharing ? '● Active Live Sharing' : '○ Sharing Paused'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ) : (
