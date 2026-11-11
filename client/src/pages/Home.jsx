@@ -15,8 +15,27 @@ const perks = [
 export default function Home() {
   const featured = products.filter((p) => p.featured);
 
-  // Today's deals: products with an oldPrice, up to 4
-  const deals = products.filter((p) => p.oldPrice).slice(0, 4);
+  // Today's deals: products with an oldPrice
+  const deals = products.filter((p) => p.oldPrice).slice(0, 8);
+  
+  // Top Value Deals
+  const topValueDeals = products.filter((p) => p.badge === 'Deal').slice(0, 6);
+  
+  // Best Sellers
+  const bestSellers = products.filter((p) => p.badge === 'Best Seller').slice(0, 4);
+  
+  // Smartphones
+  const smartphones = products.filter((p) => p.category === 'smartphones').slice(0, 6);
+  
+  // Home Appliances
+  const homeAppliances = products.filter((p) => 
+    ['refrigerators', 'washing-machines', 'air-conditioners'].includes(p.category)
+  ).slice(0, 6);
+  
+  // Audio Collection
+  const audioProducts = products.filter((p) => 
+    ['headphones', 'speakers'].includes(p.category)
+  ).slice(0, 6);
 
   // Hero tiles: Samsung TV, iPhone 16, MacBook Air
   const heroTiles = [1, 5, 9].map(getProduct);
@@ -128,16 +147,133 @@ export default function Home() {
 
       {/* ── Today's deals ── */}
       <section className="mx-auto mt-14 max-w-7xl px-4 sm:px-6" aria-labelledby="deals">
-        <div className="rounded-3xl bg-sky-50 p-6 sm:p-8">
-          <div className="flex items-end justify-between">
-            <h2 id="deals" className="text-2xl font-extrabold">Today's deals</h2>
+        <div className="rounded-3xl bg-gradient-to-br from-red-50 to-orange-50 p-6 sm:p-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 id="deals" className="text-2xl font-extrabold">⚡ Today's Deals</h2>
+              <p className="mt-1 text-sm text-navy-600">Limited time offers - Grab them now!</p>
+            </div>
             <Link to="/store?deals=1" className="text-sm font-bold text-brand-600 hover:text-brand-700">
-              See all deals
+              View all deals
             </Link>
           </div>
-          <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {deals.map((p) => <ProductCard key={p.id} product={p} />)}
           </div>
+        </div>
+      </section>
+
+      {/* ── Promotional Banner Row ── */}
+      <section className="mx-auto mt-14 max-w-7xl px-4 sm:px-6">
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Smartphone Festival */}
+          <Link 
+            to="/store?category=smartphones"
+            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-600 to-blue-600 p-8 text-white"
+          >
+            <div className="relative z-10">
+              <span className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur-sm">
+                📱 Smartphone Festival
+              </span>
+              <h3 className="mt-4 text-2xl font-extrabold">Great Offers on Top Brands</h3>
+              <p className="mt-2 text-purple-100">Latest models from Apple, Samsung & more</p>
+              <span className="mt-4 inline-flex items-center gap-2 text-sm font-bold">
+                Shop Now <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+              </span>
+            </div>
+            <ProductImage
+              product={smartphones[0]}
+              iconSize={80}
+              className="absolute -right-8 -top-8 size-48 opacity-30 blur-sm transition-transform group-hover:scale-110"
+            />
+          </Link>
+
+          {/* Home Appliance Deals */}
+          <Link 
+            to="/store?category=refrigerators"
+            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-600 p-8 text-white"
+          >
+            <div className="relative z-10">
+              <span className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur-sm">
+                🏠 Home Appliance Deals
+              </span>
+              <h3 className="mt-4 text-2xl font-extrabold">Upgrade Your Home</h3>
+              <p className="mt-2 text-emerald-100">Refrigerators, Washing Machines & ACs</p>
+              <span className="mt-4 inline-flex items-center gap-2 text-sm font-bold">
+                Explore Now <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+              </span>
+            </div>
+            <ProductImage
+              product={homeAppliances[0]}
+              iconSize={80}
+              className="absolute -right-8 -top-8 size-48 opacity-30 blur-sm transition-transform group-hover:scale-110"
+            />
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Top Value Deals ── */}
+      <section className="mx-auto mt-14 max-w-7xl px-4 sm:px-6" aria-labelledby="value-deals">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 id="value-deals" className="text-2xl font-extrabold">💎 Top Value Deals</h2>
+            <p className="mt-1 text-sm text-navy-600">Best prices on popular products</p>
+          </div>
+          <Link to="/store?deals=1" className="text-sm font-bold text-brand-600 hover:text-brand-700">
+            View all
+          </Link>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {topValueDeals.map((p) => <ProductCard key={p.id} product={p} />)}
+        </div>
+      </section>
+
+      {/* ── Smartphones Collection ── */}
+      <section className="mx-auto mt-14 max-w-7xl px-4 sm:px-6" aria-labelledby="smartphones">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 id="smartphones" className="text-2xl font-extrabold">📱 Smartphones & Electronics</h2>
+            <p className="mt-1 text-sm text-navy-600">Latest models with exciting offers</p>
+          </div>
+          <Link to="/store?category=smartphones" className="text-sm font-bold text-brand-600 hover:text-brand-700">
+            View all
+          </Link>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {smartphones.map((p) => <ProductCard key={p.id} product={p} />)}
+        </div>
+      </section>
+
+      {/* ── Audio Collection Banner ── */}
+      <section className="mx-auto mt-14 max-w-7xl px-4 sm:px-6">
+        <Link 
+          to="/store?category=headphones"
+          className="group relative flex overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 p-10 text-white"
+        >
+          <div className="relative z-10 max-w-md">
+            <span className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur-sm">
+              🎧 Audio Collection
+            </span>
+            <h3 className="mt-4 text-3xl font-extrabold">Premium Sound Experience</h3>
+            <p className="mt-3 text-lg text-orange-100">Headphones, earbuds & speakers starting at ₹999</p>
+            <span className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-orange-600 transition-transform group-hover:scale-105">
+              Shop Audio <ArrowRight size={16} />
+            </span>
+          </div>
+          <div className="absolute -right-12 -top-12 hidden lg:block">
+            <ProductImage
+              product={audioProducts[0]}
+              iconSize={120}
+              className="size-80 opacity-40 blur-sm"
+            />
+          </div>
+        </Link>
+      </section>
+
+      {/* ── Audio Products Grid ── */}
+      <section className="mx-auto mt-8 max-w-7xl px-4 sm:px-6" aria-labelledby="audio">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {audioProducts.map((p) => <ProductCard key={p.id} product={p} />)}
         </div>
       </section>
 
