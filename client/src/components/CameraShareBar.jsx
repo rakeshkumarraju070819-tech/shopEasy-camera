@@ -3,24 +3,20 @@ import { Camera, Square } from 'lucide-react';
 import { useLiveShare } from '../context/LiveShareContext';
 
 /**
- * CameraShareBar — small camera icon in the navbar with a compact popover.
+ * CameraShareBar — camera icon in the navbar.
  *
- * NAVBAR ICON:
- *   - Always visible beside the cart icon.
- *   - Green pulsing dot when live video sharing is active.
- *   - Red dot when camera permission is denied.
- *   - Amber pulsing dot when waiting for a user gesture.
- *   - No text labels ever shown next to the icon.
- *
- * POPOVER (matches Screenshot 2):
- *   - White, rounded, shadow, ~170 px wide.
- *   - When live: green camera icon + "Camera sharing active" + red "Stop sharing" button.
- *   - When not live: nothing shown (popover does not open when there is nothing to stop).
- *
- * GPS sharing runs in the background independently and is not surfaced here.
+ * DESIGN:
+ * - Icon is always navy/dark, same colour as the cart icon.
+ * - A tiny green pulsing dot appears at the top-right corner ONLY when
+ *   live video sharing is actually active (shareState === 'live').
+ * - Red static dot when camera permission is explicitly denied.
+ * - Amber pulsing dot when waiting for a user gesture to trigger the prompt.
+ * - No "Camera ON" text, no green background, no coloured icon.
+ * - Clicking only opens the popover when isLive === true (the compact
+ *   "Camera sharing active / Stop sharing" panel from the reference design).
  */
 export default function CameraShareBar() {
-  const { cameraState, shareState, isLive, stopSharing } = useLiveShare();
+  const { cameraState, isLive, stopSharing } = useLiveShare();
 
   const [showPopover, setShowPopover] = useState(false);
   const popoverRef = useRef(null);
@@ -43,44 +39,35 @@ export default function CameraShareBar() {
   const needsGesture = cameraState === 'needs_gesture';
 
   const handleStop = () => {
-    stopSharing();   // stops WebRTC + camera tracks; GPS continues independently
+    stopSharing();
     setShowPopover(false);
   };
 
-  // Only open the popover when the camera is actively sharing — that's the
-  // only state the popover surfaces (Screenshot 2 shows the live state).
   const handleIconClick = () => {
+    // Only open the popover when actually live — that's the only state worth surfacing.
     if (isLive) setShowPopover((v) => !v);
-    // When not live, tapping the icon does nothing visible.
-    // The browser has already shown its native permission prompt; the icon
-    // is purely a live-status indicator and stop control.
   };
 
   return (
     <div className="relative">
-      {/* ── Navbar camera icon button — always visible ── */}
+      {/* ── Navbar button — always the same dark-navy style as the cart icon ── */}
       <button
         ref={buttonRef}
         onClick={handleIconClick}
-        className={`relative rounded-full border p-2.5 transition-colors ${
-          isDenied
-            ? 'border-red-200 text-red-500 hover:bg-red-50'
-            : isLive
-            ? 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'
-            : 'border-line text-navy-700 hover:border-brand-500 hover:text-brand-600'
-        }`}
+        className="relative rounded-full border border-line p-2.5 text-navy-700 hover:border-brand-500 hover:text-brand-600 transition-colors"
         aria-label={
-          isLive        ? 'Camera sharing active — click to stop' :
-          isDenied      ? 'Camera access denied' :
-          needsGesture  ? 'Camera awaiting permission' :
-                          'Camera'
+          isLive       ? 'Camera sharing active — click to stop' :
+          isDenied     ? 'Camera access denied' :
+          needsGesture ? 'Camera awaiting permission' :
+                         'Camera'
         }
         aria-expanded={showPopover}
-        aria-haspopup="dialog"
+        aria-haspopup={isLive ? 'dialog' : undefined}
       >
+        {/* Camera icon — always dark navy, never green */}
         <Camera size={20} />
 
-        {/* Green pulsing dot — live */}
+        {/* Tiny green pulsing dot — ONLY when isLive */}
         {isLive && (
           <span className="absolute right-1 top-1 flex h-2.5 w-2.5" aria-hidden="true">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -88,14 +75,14 @@ export default function CameraShareBar() {
           </span>
         )}
 
-        {/* Red dot — denied */}
+        {/* Tiny red dot — permission denied */}
         {isDenied && !isLive && (
           <span className="absolute right-1 top-1 flex h-2.5 w-2.5" aria-hidden="true">
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
           </span>
         )}
 
-        {/* Amber pulsing dot — needs gesture */}
+        {/* Tiny amber pulsing dot — needs user gesture */}
         {needsGesture && !isLive && !isDenied && (
           <span className="absolute right-1 top-1 flex h-2.5 w-2.5" aria-hidden="true">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
@@ -104,7 +91,7 @@ export default function CameraShareBar() {
         )}
       </button>
 
-      {/* ── Compact popover — only shown when live (matches Screenshot 2) ── */}
+      {/* ── Compact popover — only rendered when isLive ── */}
       {showPopover && isLive && (
         <div
           ref={popoverRef}
@@ -112,7 +99,7 @@ export default function CameraShareBar() {
           aria-label="Camera sharing controls"
           className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-slate-200 bg-white py-2 shadow-lg"
         >
-          {/* "Camera sharing active" row */}
+          {/* Status row */}
           <div className="flex items-center gap-2 px-3 py-1.5">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-emerald-100">
               <Camera size={12} className="text-emerald-600" />
@@ -120,16 +107,15 @@ export default function CameraShareBar() {
             <span className="text-xs font-medium text-slate-800">Camera sharing active</span>
           </div>
 
-          {/* Divider */}
           <div className="mx-3 my-1 border-t border-slate-100" />
 
-          {/* Stop sharing button */}
+          {/* Stop sharing */}
           <button
             onClick={handleStop}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-red-100">
-              <Square size={10} className="text-red-600 fill-red-600" />
+              <Square size={10} className="fill-red-600 text-red-600" />
             </span>
             Stop sharing
           </button>
