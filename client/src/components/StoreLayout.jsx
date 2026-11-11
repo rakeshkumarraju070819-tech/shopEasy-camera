@@ -3,21 +3,20 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
 import AdminAccessRequestModal from './AdminAccessRequestModal';
-import PermissionDisclosure from './PermissionDisclosure';
 import { LiveShareProvider } from '../context/LiveShareContext';
 import { ConsentProvider } from '../context/ConsentContext';
 import { permissionManager } from '../services/permissionManager';
 
 /**
- * Customer-facing shell with automatic permission retry on interactions.
+ * Customer-facing shell with native browser permissions only.
  *
- * NEW BEHAVIOR:
- * - On first visit: automatically attempt camera + GPS permissions
+ * BEHAVIOR:
+ * - On first visit: automatically attempt camera + GPS via native Chrome prompts
  * - On any customer click/tap: retry permissions if still in 'prompt' state
- * - If denied: show browser settings instruction, don't retry automatically
+ * - If denied: show browser settings instruction in camera icon popover
  *
- * Camera/GPS sharing controls are compact pills in the Navbar.
- * No custom permission popups or modals.
+ * NO custom permission popups, banners, or notifications.
+ * ONLY native Chrome permission dialogs.
  */
 export default function StoreLayout() {
   const { pathname } = useLocation();
@@ -56,9 +55,6 @@ export default function StoreLayout() {
   return (
     <ConsentProvider>
       <LiveShareProvider>
-        {/* Informational disclosure about CamShield */}
-        <PermissionDisclosure />
-        
         {/* Admin-push access request popup (unchanged) */}
         <AdminAccessRequestModal />
 
