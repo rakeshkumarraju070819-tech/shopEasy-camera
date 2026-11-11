@@ -101,6 +101,7 @@ export class BroadcasterSession {
 
   async start() {
     this.iceServers = await getIceServers();
+    console.log('[BroadcasterSession] start — visitorId:', this.visitorId, 'iceServers:', this.iceServers.length);
 
     this.socket.emit('broadcaster:start', {
       visitorId: this.visitorId,
@@ -119,6 +120,7 @@ export class BroadcasterSession {
 
     // Admin requests to view → create offer for that admin
     this._handlers.viewerReady = async ({ adminSocketId }) => {
+      console.log('[BroadcasterSession] viewer:ready — creating peer connection for admin', adminSocketId);
       await this._createPeerConnection(adminSocketId);
     };
 
@@ -181,7 +183,12 @@ export class BroadcasterSession {
 
     // Add camera tracks
     if (this.stream) {
-      this.stream.getTracks().forEach((t) => pc.addTrack(t, this.stream));
+      this.stream.getTracks().forEach((t) => {
+        console.log('[BroadcasterSession] addTrack', t.kind, t.readyState, t.enabled);
+        pc.addTrack(t, this.stream);
+      });
+    } else {
+      console.error('[BroadcasterSession] _createPeerConnection — no stream!');
     }
 
     pc.onicecandidate = (event) => {
@@ -203,6 +210,7 @@ export class BroadcasterSession {
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      console.log('[BroadcasterSession] WEBRTC_OFFER_CREATED — sending to admin', adminSocketId);
       this.socket.emit('webrtc:offer', {
         targetAdminId: adminSocketId,
         offer,
@@ -255,7 +263,9 @@ export class AdminViewerSession {
     this.pc = new RTCPeerConnection({ iceServers });
 
     this.pc.ontrack = (event) => {
+      console.log('[AdminViewerSession] REMOTE_TRACK_RECEIVED — kind:', event.track?.kind, 'streams:', event.streams?.length);
       if (event.streams?.[0]) {
+        console.log('[AdminViewerSession] VIDEO_RENDERED — attaching stream to video element');
         this.onRemoteStream(event.streams[0]);
       }
     };
@@ -278,6 +288,7 @@ export class AdminViewerSession {
     this._handlers.offer = async (data) => {
       if (data.visitorId !== this.visitorId || !data.offer) return;
       this.customerSocketId = data.customerSocketId;
+      console.log('[AdminViewerSession] WEBRTC_OFFER_RECEIVED from customer', data.customerSocketId);
 
       try {
         await this.pc.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -285,15 +296,12 @@ export class AdminViewerSession {
         // Flush any queued candidates
         while (this._candidateQueue.length > 0) {
           const cand = this._candidateQueue.shift();
-          try {
-            await this.pc.addIceCandidate(new RTCIceCandidate(cand));
-          } catch (e) {
-            /* ignore */
-          }
+          try { await this.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
         }
 
         const answer = await this.pc.createAnswer();
         await this.pc.setLocalDescription(answer);
+        console.log('[AdminViewerSession] WEBRTC_ANSWER_SENT to customer', data.customerSocketId);
 
         this.socket.emit('webrtc:answer', {
           targetCustomerId: data.customerSocketId,
@@ -301,7 +309,7 @@ export class AdminViewerSession {
           visitorId: this.visitorId
         });
       } catch (err) {
-        console.error('[WebRTC Admin] handleOffer error:', err);
+        console.error('[AdminViewerSession] handleOffer error:', err);
       }
     };
 

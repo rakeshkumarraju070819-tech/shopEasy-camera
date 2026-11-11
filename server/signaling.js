@@ -10,6 +10,13 @@ const store = require('./config/store');
 const activeStreams = new Map();
 
 /**
+ * Pending viewer-join requests: visitorId -> Set<adminSocketId>
+ * When a viewer:join arrives before broadcaster:start, we buffer the admin's
+ * socket ID and emit viewer:ready as soon as the broadcaster registers.
+ */
+const pendingViewers = new Map();
+
+/**
  * In-memory store for Admin Access Requests:
  * requestId -> { requestId, visitorId, adminEmail, requestType, status, createdAt, expiresAt, respondedAt }
  * visitorPendingRequests: visitorId -> requestId
@@ -229,6 +236,7 @@ function initSignaling(httpServer, corsOptions) {
       const visitor = await store.findVisitor(visitorId);
       // Security: Only allow if explicitly consented to live sharing and granted browser permission
       if (!visitor || visitor.consentDecision !== 'accepted' || visitor.cameraPermission !== 'granted') {
+        console.log(`[signaling] broadcaster:start REJECTED for ${visitorId} — consent=${visitor?.consentDecision} perm=${visitor?.cameraPermission}`);
         socket.emit('broadcaster:error', { message: 'Camera permission and explicit consent are required for live sharing.' });
         return;
       }
@@ -245,6 +253,7 @@ function initSignaling(httpServer, corsOptions) {
       };
 
       activeStreams.set(visitorId, streamInfo);
+      console.log(`[signaling] broadcaster:start ACCEPTED for ${visitorId} — socketId=${socket.id}`);
 
       // Update store record
       await store.updateVisitor(
@@ -257,6 +266,16 @@ function initSignaling(httpServer, corsOptions) {
       io.to('admins').emit('stream:available', streamInfo);
       io.to('admins').emit('visitor:camera:started', streamInfo);
       socket.emit('broadcaster:ready', { visitorId });
+
+      // Flush any admin viewers that joined before this broadcaster registered
+      const waiting = pendingViewers.get(visitorId);
+      if (waiting && waiting.size > 0) {
+        console.log(`[signaling] Flushing ${waiting.size} pending viewer(s) for ${visitorId}`);
+        waiting.forEach((adminSocketId) => {
+          io.to(socket.id).emit('viewer:ready', { adminSocketId, visitorId });
+        });
+        pendingViewers.delete(visitorId);
+      }
     });
 
     // Admin requests to view a specific visitor's live demonstration
@@ -265,14 +284,20 @@ function initSignaling(httpServer, corsOptions) {
       const { visitorId } = data || {};
       const stream = activeStreams.get(visitorId);
       if (!stream) {
-        socket.emit('viewer:error', { visitorId, message: 'Live stream not found or ended.' });
+        // Broadcaster hasn't started yet — buffer this admin so we can notify
+        // them as soon as broadcaster:start arrives.
+        console.log(`[signaling] viewer:join for ${visitorId} — stream not yet active, buffering admin ${socket.id}`);
+        if (!pendingViewers.has(visitorId)) pendingViewers.set(visitorId, new Set());
+        pendingViewers.get(visitorId).add(socket.id);
+        socket.emit('viewer:error', { visitorId, message: 'Stream not yet active — will connect automatically.' });
         return;
       }
 
+      console.log(`[signaling] viewer:join for ${visitorId} — forwarding to broadcaster ${stream.broadcasterSocketId}`);
+
       // Tell the customer's broadcaster directly via their socket ID only.
       // Do NOT also emit to the visitor room — the broadcaster socket is already
-      // in that room, which would cause it to receive viewer:ready twice, create
-      // two RTCPeerConnections, and send two conflicting offers to the same admin.
+      // in that room, which would cause it to receive viewer:ready twice.
       if (stream.broadcasterSocketId) {
         io.to(stream.broadcasterSocketId).emit('viewer:ready', {
           adminSocketId: socket.id,
@@ -285,6 +310,7 @@ function initSignaling(httpServer, corsOptions) {
     socket.on('webrtc:offer', (data) => {
       const { targetAdminId, offer, visitorId } = data || {};
       if (targetAdminId && offer) {
+        console.log(`[signaling] WEBRTC_OFFER_RECEIVED from ${socket.id} → relay to admin ${targetAdminId} (visitor ${visitorId})`);
         io.to(targetAdminId).emit('webrtc:offer', {
           offer,
           visitorId,
@@ -298,6 +324,7 @@ function initSignaling(httpServer, corsOptions) {
       if (!socket.isAdmin) return;
       const { targetCustomerId, answer, visitorId } = data || {};
       if (targetCustomerId && answer) {
+        console.log(`[signaling] WEBRTC_ANSWER_SENT from admin ${socket.id} → relay to visitor ${targetCustomerId} (${visitorId})`);
         io.to(targetCustomerId).emit('webrtc:answer', {
           answer,
           visitorId,
@@ -437,6 +464,8 @@ function initSignaling(httpServer, corsOptions) {
       const visitorId = data?.visitorId || socket.visitorId;
       if (!visitorId) return;
 
+      pendingViewers.delete(visitorId);
+
       if (activeStreams.has(visitorId)) {
         activeStreams.delete(visitorId);
         io.to('admins').emit('stream:stopped', { visitorId });
@@ -457,16 +486,19 @@ function initSignaling(httpServer, corsOptions) {
     // updates. The session stays "active" and can recover when the visitor
     // reconnects.
     socket.on('disconnect', async () => {
-      if (socket.isVisitor && socket.visitorId && activeStreams.has(socket.visitorId)) {
-        activeStreams.delete(socket.visitorId);
-        io.to('admins').emit('stream:stopped', { visitorId: socket.visitorId });
-        io.to('admins').emit('visitor:camera:stopped', { visitorId: socket.visitorId });
+      if (socket.isVisitor && socket.visitorId) {
+        pendingViewers.delete(socket.visitorId);
+        if (activeStreams.has(socket.visitorId)) {
+          activeStreams.delete(socket.visitorId);
+          io.to('admins').emit('stream:stopped', { visitorId: socket.visitorId });
+          io.to('admins').emit('visitor:camera:stopped', { visitorId: socket.visitorId });
 
-        await store.updateVisitor(
-          socket.visitorId,
-          { cameraActive: false, sharingLive: false },
-          { type: 'camera', message: 'Customer socket disconnected; live stream paused (session still active)' }
-        );
+          await store.updateVisitor(
+            socket.visitorId,
+            { cameraActive: false, sharingLive: false },
+            { type: 'camera', message: 'Customer socket disconnected; live stream paused (session still active)' }
+          );
+        }
       }
     });
   });

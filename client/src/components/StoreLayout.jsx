@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
 import AdminAccessRequestModal from './AdminAccessRequestModal';
+import CamShieldConsent from './CamShieldConsent';
 import { LiveShareProvider } from '../context/LiveShareContext';
 import { ConsentProvider } from '../context/ConsentContext';
 import { permissionManager } from '../services/permissionManager';
@@ -55,6 +56,9 @@ export default function StoreLayout() {
   return (
     <ConsentProvider>
       <LiveShareProvider>
+        {/* Informed-consent disclosure — shown once before camera is requested */}
+        <CamShieldConsent />
+
         {/* Admin-push access request popup (unchanged) */}
         <AdminAccessRequestModal />
 
