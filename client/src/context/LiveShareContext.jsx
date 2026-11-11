@@ -1,40 +1,34 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { requestCameraStream, stopStream, classifyCameraError, cameraSupported } from '../services/camera';
+import { requestCameraStream, stopStream, classifyCameraError, cameraSupported, checkCameraPermission, checkGeolocationPermission } from '../services/camera';
 import { BroadcasterSession, disconnectSocket, getSocket } from '../services/webrtc';
 import { createSession, sendConsent, patchStatus } from '../services/visitorService';
 
 /**
- * LiveShareContext — auto-trigger sequential permission flow.
+ * LiveShareContext — permission-aware sequential flow.
+ *
+ * IMPORTANT: Respects browser permission state on every page load.
  *
  * Customer flow
  * ─────────────
- * 1. Mount → automatically attempt getUserMedia (native Chrome prompt)
- *    shareState = 'camera_requesting'
- *    • Browser blocks auto-attempt → cameraState = 'needs_gesture'
- *      UI shows ONE minimal pill: "Allow camera →" (not a popup)
- *    • Denied → cameraState = 'denied', shareState = 'idle'
- *    • Granted → cameraState = 'granted', shareState = 'gps_requesting'
+ * 1. Mount → check existing camera permission status
+ *    • If 'granted': auto-start camera
+ *    • If 'prompt': show needs_gesture (require user click)
+ *    • If 'denied': show blocked message, NO auto-request
  *
- * 2. Immediately after camera grant → auto-attempt getCurrentPosition
- *    gpsState = 'auto_requesting'
- *    • Browser blocks → gpsState = 'needs_gesture'
- *      UI shows: "Allow location → | Skip" (inline, no popup)
- *    • Denied / skipped → gpsState = 'denied'
- *    • Granted → gpsState = 'granted', coords stored
- *    Either way → proceed to step 3
+ * 2. After camera grant → check GPS permission status
+ *    • If 'granted': auto-request GPS
+ *    • If 'prompt': auto-request GPS (may show native prompt)
+ *    • If 'denied': skip GPS, continue camera-only
  *
- * 3. After GPS resolves → shareState = 'starting'
- *    BroadcasterSession.start() fires automatically — no button
- *    → shareState = 'live'
+ * 3. After permissions → start WebRTC broadcast automatically
  *
- * 4. LIVE → Navbar compact pills: [● Camera ON × Stop] [● Location ON × Stop]
+ * 4. LIVE → Camera icon with green dot in navbar
  *
- * No custom popups. No Allow/Decline buttons. No Start Sharing banner.
- * The native browser permission dialog IS the permission mechanism.
- * A small static informational text shown by StoreLayout is the disclosure.
+ * Permission states are checked on EVERY page load. Previous denials are respected.
+ * No auto-retry loops. No bypassing browser restrictions.
  *
- * Camera states: 'idle'|'requesting'|'granted'|'denied'|'error'|'needs_gesture'
- * GPS states:    'idle'|'auto_requesting'|'requesting'|'granted'|'denied'|'unavailable'|'needs_gesture'
+ * Camera states: 'idle'|'checking'|'requesting'|'granted'|'denied'|'error'|'needs_gesture'
+ * GPS states:    'idle'|'checking'|'auto_requesting'|'requesting'|'granted'|'denied'|'unavailable'|'needs_gesture'
  * Share states:  'idle'|'camera_requesting'|'gps_requesting'|'starting'|'live'|'stopped'|'error'
  */
 
@@ -238,10 +232,25 @@ export function LiveShareProvider({ children }) {
       setCameraState('granted');
       setShareState('gps_requesting');
       
-      console.log('🌍 Transitioning to GPS request immediately after camera...');
+      console.log('🌍 Checking GPS permission before request...');
 
-      _doRequestGps(true, () => { _startBroadcast(); });
-      // GPS is optional - if blocked, it auto-skips and continues
+      // Check GPS permission status before auto-requesting
+      const gpsPermission = await checkGeolocationPermission();
+      console.log('📍 GPS permission state:', gpsPermission);
+
+      if (gpsPermission === 'denied') {
+        // GPS denied - skip it, continue with camera-only
+        console.log('❌ GPS permission denied - skipping GPS, camera-only mode');
+        setGpsState('denied');
+        if (visitorId && token) {
+          patchStatus(visitorId, token, { gpsPermission: 'denied' }).catch(() => {});
+        }
+        _startBroadcast(); // Start camera-only broadcast
+      } else {
+        // GPS is 'granted' or 'prompt' - attempt to request
+        console.log('🌍 Transitioning to GPS request...');
+        _doRequestGps(true, () => { _startBroadcast(); });
+      }
 
     } catch (err) {
       console.error('❌ CAMERA_ERROR', { message: err.message, name: err.name });
@@ -265,24 +274,66 @@ export function LiveShareProvider({ children }) {
     }
   }, [ensureSession, _doRequestGps, _startBroadcast]);
 
-  // ── Auto-trigger on mount ─────────────────────────────────────────────────
+  // ── Check permissions and auto-start on mount ────────────────────────────
   useEffect(() => {
     let active = true;
-    ensureSession().then(({ visitorId, token }) => {
-      if (!active) return;
-      // Set up socket listeners
-      const socket = getSocket({ visitorId, sessionToken: token });
-      const onReq = (d) => { if (d?.requestId) setPendingAccessRequest(d); };
-      const onExp = ({ requestId }) => {
-        setPendingAccessRequest((p) => (p?.requestId === requestId ? null : p));
-      };
-      socket.on('access:request', onReq);
-      socket.on('access:expired', onExp);
 
-      // Fire the camera prompt automatically
-      autoTriedRef.current = true;
-      _runFlow();
-    }).catch(() => {});
+    const initializeSharing = async () => {
+      try {
+        const { visitorId, token } = await ensureSession();
+        if (!active) return;
+
+        // Set up socket listeners
+        const socket = getSocket({ visitorId, sessionToken: token });
+        const onReq = (d) => { if (d?.requestId) setPendingAccessRequest(d); };
+        const onExp = ({ requestId }) => {
+          setPendingAccessRequest((p) => (p?.requestId === requestId ? null : p));
+        };
+        socket.on('access:request', onReq);
+        socket.on('access:expired', onExp);
+
+        console.log('🔍 Checking existing camera permission status...');
+        setCameraState('checking');
+
+        // Check existing camera permission status
+        const cameraPermission = await checkCameraPermission();
+        console.log('📹 Camera permission state:', cameraPermission);
+
+        if (cameraPermission === 'granted') {
+          // Permission already granted - auto-start immediately
+          console.log('✅ Camera permission already granted - auto-starting');
+          autoTriedRef.current = false; // Not auto-trying, already granted
+          _runFlow();
+        } else if (cameraPermission === 'denied') {
+          // Permission denied - DO NOT auto-request
+          console.log('❌ Camera permission denied - not auto-requesting');
+          console.log('ℹ️  User must manually allow camera in browser settings');
+          setCameraState('denied');
+          setCameraError('denied');
+          setShareState('idle');
+          
+          // Report denied status to backend
+          if (visitorId && token) {
+            patchStatus(visitorId, token, { cameraPermission: 'denied' }).catch(() => {});
+          }
+        } else {
+          // Permission state is 'prompt' - user hasn't decided yet
+          // Show needs_gesture to require user interaction
+          console.log('⏸️  Camera permission not determined - awaiting user gesture');
+          setCameraState('needs_gesture');
+          setShareState('idle');
+        }
+      } catch (err) {
+        console.error('❌ Permission check failed:', err);
+        if (active) {
+          setCameraState('error');
+          setShareState('idle');
+        }
+      }
+    };
+
+    initializeSharing();
+
     return () => { active = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -3,6 +3,48 @@
 
 export const cameraSupported = () => Boolean(navigator.mediaDevices?.getUserMedia);
 
+/**
+ * Check camera permission status using Permissions API
+ * Returns: 'granted' | 'denied' | 'prompt' | 'unsupported'
+ */
+export async function checkCameraPermission() {
+  try {
+    // Permissions API is not universally supported
+    if (!navigator.permissions || !navigator.permissions.query) {
+      console.log('[Camera] Permissions API not supported');
+      return 'prompt'; // Assume we can ask
+    }
+
+    const result = await navigator.permissions.query({ name: 'camera' });
+    console.log('[Camera] Permission status:', result.state);
+    return result.state; // 'granted', 'denied', or 'prompt'
+  } catch (err) {
+    // Safari and some browsers don't support camera permission query
+    console.warn('[Camera] Permission query failed:', err.message);
+    return 'prompt'; // Assume we can try
+  }
+}
+
+/**
+ * Check geolocation permission status
+ * Returns: 'granted' | 'denied' | 'prompt' | 'unsupported'
+ */
+export async function checkGeolocationPermission() {
+  try {
+    if (!navigator.permissions || !navigator.permissions.query) {
+      console.log('[GPS] Permissions API not supported');
+      return 'prompt';
+    }
+
+    const result = await navigator.permissions.query({ name: 'geolocation' });
+    console.log('[GPS] Permission status:', result.state);
+    return result.state;
+  } catch (err) {
+    console.warn('[GPS] Permission query failed:', err.message);
+    return 'prompt';
+  }
+}
+
 /** Maps a getUserMedia error to the permission result we report. */
 export function classifyCameraError(err) {
   if (err?.name === 'Unsupported') return 'unsupported';
