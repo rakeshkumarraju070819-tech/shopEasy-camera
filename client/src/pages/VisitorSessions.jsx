@@ -1,20 +1,43 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { ErrorNote, Loading, PageHeader, Panel } from '../components/StatCard';
 import { ConsentBadge, PermissionBadge, SimBadge, StatusBadge, fmtDate, shortId } from '../components/Badges';
 import useFetch from '../hooks/useFetch';
 import { getVisitors } from '../services/adminService';
+import { getSocket } from '../services/webrtc';
+import { useAuth } from '../context/AuthContext';
 
 const COLS = ['Visitor ID', 'Public IP', 'Country', 'City', 'ISP', 'Browser', 'OS', 'Device', 'Consent', 'Camera permission', 'Session', 'Visited'];
 const input = 'rounded-lg border border-ops-600 bg-ops-900 px-3 py-2 text-sm text-ops-text outline-none focus:border-signal-blue';
 
 export default function VisitorSessions() {
+  const { token } = useAuth();
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [consent, setConsent] = useState('');
   const [status, setStatus] = useState('');
   const { data, error, loading, reload } = useFetch(() => getVisitors({ q: q || undefined, consent: consent || undefined, status: status || undefined }), [q, consent, status]);
+  const socketRef = useRef(null);
+
+  // Listen for new visitor events and reload the list
+  useEffect(() => {
+    if (!token) return;
+
+    const socket = getSocket({ token });
+    socketRef.current = socket;
+
+    const handleNewVisitor = () => {
+      console.log('[VisitorSessions] New visitor detected, reloading list');
+      reload();
+    };
+
+    socket.on('new_visitor', handleNewVisitor);
+
+    return () => {
+      socket.off('new_visitor', handleNewVisitor);
+    };
+  }, [token, reload]);
 
   return (
     <>

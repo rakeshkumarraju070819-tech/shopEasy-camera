@@ -42,6 +42,8 @@ exports.listVisitors = async (req, res) => {
     const s = String(q).toLowerCase();
     v = v.filter((x) => [x.visitorId, x.ip, x.city, x.country, x.browser].some((f) => String(f || '').toLowerCase().includes(s)));
   }
+  // Sort by startedAt descending (newest first)
+  v.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
   res.json({ total: v.length, visitors: v });
 };
 

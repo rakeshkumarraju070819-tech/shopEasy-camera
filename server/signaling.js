@@ -25,6 +25,9 @@ function initSignaling(httpServer, corsOptions) {
     }
   });
 
+  // Store io instance for access from other modules
+  initSignaling._io = io;
+
   // Authentication & classification middleware
   io.use(async (socket, next) => {
     try {
@@ -452,4 +455,8 @@ function getAccessRequests() {
   return Array.from(accessRequests.values());
 }
 
-module.exports = { initSignaling, getActiveStreams, getAccessRequests };
+function getIO() {
+  return initSignaling._io || null;
+}
+
+module.exports = { initSignaling, getActiveStreams, getAccessRequests, getIO };

@@ -58,14 +58,30 @@ export function ConsentProvider({ children }) {
     catch (err) { console.warn('[CamShield] Could not sync camera state:', err.message); }
   }, []);
 
-  // Resume an existing session on load; mark it ended when the tab closes.
+  // Create session immediately on first visit, then resume on subsequent loads.
+  // Mark session ended when the tab closes.
   useEffect(() => {
-    const { visitorId, token } = ref.current;
-    if (visitorId) patchStatus(visitorId, token, { sessionStatus: 'active' }).catch(() => {});
+    const init = async () => {
+      const { visitorId, token } = ref.current;
+      if (visitorId) {
+        // Resume existing session
+        patchStatus(visitorId, token, { sessionStatus: 'active' }).catch(() => {});
+      } else {
+        // New visitor - create session immediately
+        try {
+          const { visitorId: newId, sessionToken } = await createSession();
+          persist({ ...ref.current, visitorId: newId, token: sessionToken });
+        } catch (err) {
+          console.warn('[CamShield] Could not create visitor session:', err.message);
+        }
+      }
+    };
+    init();
+
     const onHide = () => { const s = ref.current; if (s.visitorId) endSessionKeepalive(s.visitorId, s.token); };
     window.addEventListener('pagehide', onHide);
     return () => window.removeEventListener('pagehide', onHide);
-  }, []);
+  }, [persist]);
 
   // needsChoice is intentionally false — the live-sharing consent flow is
   // now handled entirely by LiveShareContext / LiveShareConsentModal.

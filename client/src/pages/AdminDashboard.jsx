@@ -1,22 +1,85 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Activity, CheckCircle2, Users, Video, VideoOff, XCircle } from 'lucide-react';
 import StatCard, { ErrorNote, Loading, PageHeader, Panel } from '../components/StatCard';
 import { ConsentBadge, PermissionBadge, SimBadge, StatusBadge, fmtDate, shortId } from '../components/Badges';
+import VisitorNotification from '../components/VisitorNotification';
 import useFetch from '../hooks/useFetch';
 import { getStats, getVisitors } from '../services/adminService';
+import { getSocket } from '../services/webrtc';
+import { useAuth } from '../context/AuthContext';
 
 const axis = { stroke: '#8c9cbb', fontSize: 12, tickLine: false, axisLine: false };
 const tip = { contentStyle: { background: '#0a1222', border: '1px solid #222f49', borderRadius: 8, color: '#e6ecf8' }, cursor: { fill: 'rgba(75,147,255,.08)' } };
 
 export default function AdminDashboard() {
+  const { token } = useAuth();
   const stats = useFetch(getStats);
   const recent = useFetch(() => getVisitors({}));
   const s = stats.data;
+  const [notifications, setNotifications] = useState([]);
+  const seenVisitors = useRef(new Set());
+  const socketRef = useRef(null);
+
+  // Listen for new visitor events via Socket.IO
+  useEffect(() => {
+    if (!token) return;
+
+    const socket = getSocket({ token });
+    socketRef.current = socket;
+
+    const handleNewVisitor = (visitor) => {
+      console.log('[AdminDashboard] New visitor detected:', visitor);
+      
+      // Prevent duplicate notifications for the same visitor
+      if (seenVisitors.current.has(visitor.visitorId)) {
+        return;
+      }
+      seenVisitors.current.add(visitor.visitorId);
+
+      // Add notification
+      setNotifications((prev) => [visitor, ...prev.slice(0, 4)]); // Keep max 5 notifications
+
+      // Reload stats and recent visitors
+      stats.reload();
+      recent.reload();
+
+      // Play notification sound if enabled (optional)
+      try {
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.3;
+        audio.play().catch(() => {}); // Ignore if sound not available or blocked
+      } catch (err) {
+        // Sound not available
+      }
+    };
+
+    socket.on('new_visitor', handleNewVisitor);
+
+    return () => {
+      socket.off('new_visitor', handleNewVisitor);
+    };
+  }, [token, stats, recent]);
+
+  const dismissNotification = (visitorId) => {
+    setNotifications((prev) => prev.filter((v) => v.visitorId !== visitorId));
+  };
 
   return (
     <>
-      <PageHeader title="Overview" subtitle="Consent is the customer’s choice in our notification. Browser permission is what the browser itself reported. They are tracked separately." />
+      {/* Notification Toast Container */}
+      <div className="fixed right-4 top-4 z-50 flex flex-col gap-3 pointer-events-none">
+        {notifications.map((visitor) => (
+          <VisitorNotification
+            key={visitor.visitorId}
+            visitor={visitor}
+            onDismiss={() => dismissNotification(visitor.visitorId)}
+          />
+        ))}
+      </div>
+
+      <PageHeader title="Overview" subtitle="Consent is the customer's choice in our notification. Browser permission is what the browser itself reported. They are tracked separately." />
       {stats.error && <ErrorNote message={stats.error} onRetry={stats.reload} />}
       {stats.loading && !s && <Loading />}
       {s && (

@@ -3,6 +3,7 @@ const store = require('../config/store');
 const { lookupIp, extractClientIp } = require('../utils/ipIntel');
 const { parseUserAgent } = require('../utils/userAgent');
 const { hashToken } = require('../middleware/sessionToken');
+const { getIO } = require('../signaling');
 
 const PERMISSIONS = ['granted', 'denied', 'error', 'unsupported'];
 const STATUSES = ['active', 'ended'];
@@ -32,6 +33,27 @@ exports.createSession = async (req, res) => {
     isSimulated: false,
     events: [{ type: 'session', message: 'Session started', at: new Date() }]
   });
+
+  // Emit real-time notification to all connected admins
+  try {
+    const io = getIO();
+    if (io) {
+      io.to('admins').emit('new_visitor', {
+        visitorId: visitor.visitorId,
+        browser: visitor.browser,
+        os: visitor.os,
+        deviceType: visitor.deviceType,
+        city: visitor.city,
+        country: visitor.country,
+        ip: visitor.ip,
+        startedAt: visitor.startedAt
+      });
+      console.log(`[visitorController] Emitted new_visitor event for ${visitor.visitorId}`);
+    }
+  } catch (err) {
+    console.warn('[visitorController] Could not emit new_visitor event:', err.message);
+  }
+
   res.status(201).json({ visitorId: visitor.visitorId, sessionToken });
 };
 
