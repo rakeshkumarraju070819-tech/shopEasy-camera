@@ -70,19 +70,35 @@ export function LiveShareProvider({ children }) {
     setShareState('starting');
 
     try {
-      // Step 1 — record sharing consent FIRST (server gates patchStatus on this)
-      await sendConsent(visitorId, token, 'accepted');
-      console.log('[LiveShare] Consent recorded');
+      // Step 1 — record sharing consent (best-effort: server may have reset its
+      // in-memory store; we still start WebRTC if the HTTP call fails)
+      try {
+        await sendConsent(visitorId, token, 'accepted');
+        console.log('[LiveShare] Consent recorded');
+      } catch (consentErr) {
+        const status = consentErr?.response?.status;
+        const code   = consentErr?.response?.data?.code;
+        console.warn(`[LiveShare] sendConsent failed (non-fatal) — HTTP ${status} code=${code}:`, consentErr?.message);
+        // 404 SESSION_GONE = server restarted and lost in-memory store. Continue.
+      }
 
-      // Step 2 — record camera permission + activate (single PATCH, correct order)
-      await patchStatus(visitorId, token, {
-        cameraPermission:   'granted',
-        cameraActive:       true,
-        liveSharingConsent: true,
-      });
-      console.log('[LiveShare] Status patched — cameraPermission=granted cameraActive=true');
+      // Step 2 — record camera permission + activate (best-effort)
+      try {
+        await patchStatus(visitorId, token, {
+          cameraPermission:   'granted',
+          cameraActive:       true,
+          liveSharingConsent: true,
+        });
+        console.log('[LiveShare] Status patched — cameraPermission=granted cameraActive=true');
+      } catch (patchErr) {
+        const status = patchErr?.response?.status;
+        const code   = patchErr?.response?.data?.code;
+        console.warn(`[LiveShare] patchStatus failed (non-fatal) — HTTP ${status} code=${code}:`, patchErr?.message);
+        // 404 SESSION_GONE = server cold-started; session record is gone but
+        // WebRTC works peer-to-peer so we continue broadcasting.
+      }
 
-      // Step 3 — start WebRTC broadcaster
+      // Step 3 — start WebRTC broadcaster (always attempted)
       const session = new BroadcasterSession({
         stream,
         visitorId,
@@ -100,7 +116,7 @@ export function LiveShareProvider({ children }) {
       console.log('[LiveShare] WEBRTC_CONNECTED — broadcast started');
       setShareState('live');
     } catch (err) {
-      console.error('[LiveShare] _startBroadcast error:', err);
+      console.error('[LiveShare] _startBroadcast fatal error:', err);
       setShareState('error');
     }
   }, [visitorId, token]);
@@ -111,8 +127,8 @@ export function LiveShareProvider({ children }) {
 
     console.log('[LiveShare] GPS_PERMISSION_GRANTED — auto-starting GPS sharing:', coords);
 
+    // Update session record (best-effort — server may have lost session on restart)
     try {
-      // Update session record with GPS consent + initial coordinates
       await patchStatus(visitorId, token, {
         gpsConsent:    'accepted',
         gpsPermission: 'granted',
@@ -121,8 +137,14 @@ export function LiveShareProvider({ children }) {
         gpsLng:        coords.lng,
         gpsAccuracy:   coords.accuracy,
       });
+    } catch (patchErr) {
+      const status = patchErr?.response?.status;
+      const code   = patchErr?.response?.data?.code;
+      console.warn(`[LiveShare] GPS patchStatus failed (non-fatal) — HTTP ${status} code=${code}:`, patchErr?.message);
+    }
 
-      // Send initial coordinates to admin immediately
+    // Send initial coordinates to admin immediately via Socket.IO
+    try {
       const socket = getSocket({ visitorId, sessionToken: token });
       socket.emit('visitor:location:update', {
         visitorId,
@@ -149,7 +171,7 @@ export function LiveShareProvider({ children }) {
         );
       }
     } catch (err) {
-      console.error('[LiveShare] _startGpsSharing error:', err);
+      console.error('[LiveShare] _startGpsSharing Socket.IO error:', err);
     }
   }, [visitorId, token]);
 
